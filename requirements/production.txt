@@ -1,0 +1,9 @@
+-r base.txt
+
+# Example production stack — adapt versions / packages for your deploy.
+gunicorn
+psycopg[binary]
+whitenoise
+
+# django-admin-react from the main branch of the GitHub repo
+django-admin-react @ git+https://github.com/aavendano/django-admin-react.git@main

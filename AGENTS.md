@@ -6,6 +6,24 @@ A minimal but complete feincms3 example project (pages CMS + an articles app
 mounted through feincms3's applications support). It exists to be read and run,
 not to be deployed — keep it small and obvious.
 
+## Environments
+
+| Concern | Development | Production (example template) |
+| --- | --- | --- |
+| Settings | `app.settings.development` | `app.settings.production` |
+| Default entry | `manage.py` | `app.wsgi` |
+| Requirements | `requirements/development.txt` | `requirements/production.txt` |
+
+Shared settings live in `app/settings/base.py`. Shared packages live in
+`requirements/base.txt`. Root `requirements.txt` installs the development set.
+
+`django-admin-react` is installed per environment:
+
+- development: editable from `/home/alejandro/apps/django-admin-react`
+- production: `git+https://github.com/aavendano/django-admin-react.git@main`
+
+SPA mount: `/admin-react/` (legacy admin remains at `/admin/`).
+
 ## Linting
 
 Run all hooks over the whole tree:
@@ -16,6 +34,7 @@ prek -a
 
 Hooks fix most things themselves; stage the result and run again. Ruff is
 configured in `pyproject.toml` (`RUF012` and `E501` are ignored on purpose).
+`prek` is listed in `requirements/development.txt`.
 
 ## Running the project
 
@@ -24,7 +43,7 @@ There is no test suite. Verify changes by running the app:
 ```
 python3 -m venv venv
 . venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements/development.txt
 ./manage.py migrate
 ./manage.py loaddata fixtures/pages.json fixtures/articles.json
 ./manage.py createsuperuser

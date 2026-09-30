@@ -1,0 +1,7 @@
+-r base.txt
+
+# Local tooling (see AGENTS.md)
+prek
+
+# Editable checkout of django-admin-react (sibling repo)
+-e /home/alejandro/apps/django-admin-react
