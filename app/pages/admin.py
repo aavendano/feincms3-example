@@ -4,6 +4,7 @@ from django.utils.text import capfirst
 from django.utils.translation import gettext_lazy as _
 from feincms3.admin import TreeAdmin
 from feincms3.plugins import image, richtext
+from feincms3_filecontent.feincms.plugins import FileContentInline
 
 from . import models
 
@@ -72,4 +73,5 @@ class PageAdmin(ContentEditor, TreeAdmin):
     inlines = [
         richtext.RichTextInline.create(model=models.RichText),
         image.ImageInline.create(model=models.Image),
+        FileContentInline.create(model=models.FileContent),
     ]

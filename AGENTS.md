@@ -19,10 +19,46 @@ Shared settings live in `app/settings/base.py`. Shared packages live in
 
 `django-admin-react` is installed per environment:
 
-- development: editable from `/home/alejandro/apps/django-admin-react`
-- production: `git+https://github.com/aavendano/django-admin-react.git@main`
+- development: editable from `/home/alejandro/apps/django-admin-react`;
+  build its SPA bundle with `scripts/install-admin-react.sh --editable`
+- production: `scripts/install-admin-react.sh` clones
+  `https://github.com/aavendano/django-admin-react.git@main`, builds the
+  bundle and pip-installs it (not listed in `requirements/production.txt`)
+
+The fork does not commit the built bundle, so installing it without the
+Vite build triggers `django_admin_react.W002` and the SPA shows "not built
+yet". Needs node >= 20 and pnpm (`corepack enable`).
 
 SPA mount: `/admin-react/` (legacy admin remains at `/admin/`).
+
+## feincms3-filecontent
+
+`packages/feincms3-filecontent/` is a reusable app (own `pyproject.toml`,
+`README.md`, tests) installed editable in development. Keep it free of
+project-specific code; the example only uses its public pieces
+(`FileContent` abstract plugin, `FileContentInline`, `render_filecontent`,
+`FILECONTENT` setting). Its tests run without network against local Git repos:
+
+```
+cd packages/feincms3-filecontent && pytest
+```
+
+The content working tree (`filecontent/`) and `filecontent.worktrees/` are git-ignored;
+`./manage.py filecontent_sync` clones them from `FILECONTENT_REMOTE_URL`.
+
+## Filesystem articles (POC)
+
+`app/content/` is a content repository for articles stored as Markdown in
+`content/{MARKET}/{locale}/articles/*.md` (settings: `CONTENT_REPOSITORY`).
+The ORM `Article` model is untouched and independent. Design, API and
+limitations: `docs/content-repository.md`. Tests use temporary directories:
+
+```
+./manage.py test app.content
+```
+
+Never point tests or experiments at the real `content/`; set
+`CONTENT_REPOSITORY_ROOT` to a copy.
 
 ## Linting
 
@@ -38,7 +74,8 @@ configured in `pyproject.toml` (`RUF012` and `E501` are ignored on purpose).
 
 ## Running the project
 
-There is no test suite. Verify changes by running the app:
+The example project's only test suite is `app.content` (plus the
+filecontent package, see above). Verify changes by running the app:
 
 ```
 python3 -m venv venv

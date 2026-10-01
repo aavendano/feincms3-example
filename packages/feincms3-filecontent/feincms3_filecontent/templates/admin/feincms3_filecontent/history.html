@@ -1,0 +1,41 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate "Home" %}</a>
+  &rsaquo; <a href="{% url 'admin:feincms3_filecontent_contentindex_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; <a href="{% url 'admin:feincms3_filecontent_edit' %}?path={{ path|urlencode }}">{{ path }}</a>
+  &rsaquo; {% translate "History" %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" class="module">
+  <table style="width:100%">
+    <thead><tr><th>SHA</th><th>{% translate "Date" %}</th><th>{% translate "Author" %}</th><th>{% translate "Message" %}</th><th></th></tr></thead>
+    <tbody>
+    {% for entry in entries %}
+      <tr>
+        <td><a href="{% url 'admin:feincms3_filecontent_diff' %}?path={{ path|urlencode }}&amp;sha={{ entry.sha }}"><code>{{ entry.short_sha }}</code></a></td>
+        <td>{{ entry.date }}</td>
+        <td>{{ entry.author_name }} &lt;{{ entry.author_email }}&gt;</td>
+        <td>{{ entry.subject }}</td>
+        <td>
+          {% if not forloop.first and not read_only %}
+          <form method="post" action="{% url 'admin:feincms3_filecontent_restore' %}">{% csrf_token %}
+            <input type="hidden" name="path" value="{{ path }}">
+            <input type="hidden" name="sha" value="{{ entry.sha }}">
+            <input type="hidden" name="expected_hash" value="{{ current_hash }}">
+            <button type="submit" class="button">{% translate "Restore this version" %}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5">{% translate "No history." %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

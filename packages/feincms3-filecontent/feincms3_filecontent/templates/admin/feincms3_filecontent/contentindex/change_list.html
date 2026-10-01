@@ -1,0 +1,40 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block object-tools-items %}
+  {% if can_edit %}
+    <li><a href="{% url 'admin:feincms3_filecontent_edit' %}" class="addlink">{% translate "New document" %}</a></li>
+  {% endif %}
+  {% if can_manage %}
+    <li>
+      <form method="post" action="{% url 'admin:feincms3_filecontent_sync' %}" style="display:inline">{% csrf_token %}
+        <button type="submit" class="button">{% translate "Sync" %}</button>
+      </form>
+    </li>
+    <li>
+      <form method="post" action="{% url 'admin:feincms3_filecontent_rebuild' %}" style="display:inline">{% csrf_token %}
+        <button type="submit" class="button">{% translate "Rebuild index" %}</button>
+      </form>
+    </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
+
+{% block content_title %}
+  {{ block.super }}
+  <p>
+    {% if repository_status %}
+      <strong>{{ repository_status.state.value|upper }}</strong>
+      — {{ repository_status.branch|default:"(detached)" }} @ <code>{{ repository_status.head|slice:":10" }}</code>
+      {% if repository_status.upstream %}({% blocktranslate with ahead=repository_status.ahead behind=repository_status.behind %}ahead {{ ahead }}, behind {{ behind }}{% endblocktranslate %}){% endif %}
+    {% elif repository_error %}
+      <strong style="color:#c00">{{ repository_error }}</strong>
+    {% else %}
+      {% translate "Not a Git working tree (read-only directory mode)." %}
+    {% endif %}
+    {% if repository_state %}
+      · {% translate "Index" %} @ <code>{{ repository_state.last_indexed_sha|slice:":10"|default:"-" }}</code>
+      {% if repository_state.last_error %}<strong style="color:#c00">{{ repository_state.last_error }}</strong>{% endif %}
+    {% endif %}
+  </p>
+{% endblock %}

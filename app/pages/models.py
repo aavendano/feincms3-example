@@ -5,6 +5,7 @@ from feincms3.applications import ApplicationType, PageTypeMixin, TemplateType
 from feincms3.mixins import LanguageMixin, MenuMixin
 from feincms3.pages import AbstractPage
 from feincms3.plugins import image, richtext
+from feincms3_filecontent.feincms.models import FileContent as AbstractFileContent
 
 
 class Page(
@@ -65,3 +66,7 @@ class Image(image.Image, PagePlugin):
         max_length=200,
         blank=True,
     )
+
+
+class FileContent(AbstractFileContent, PagePlugin):
+    """A Markdown document from the content repository (body not stored here)."""
