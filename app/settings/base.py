@@ -117,12 +117,25 @@ DJANGO_ADMIN_REACT = {
 }
 
 # feincms3-filecontent: Markdown documents live in a Git working tree under
-# ``content/``; ``./manage.py filecontent_sync`` clones it from
+# ``filecontent/``; ``./manage.py filecontent_sync`` clones it from
 # FILECONTENT_REMOTE_URL on first run. Git authentication comes from SSH keys
 # or a credential helper, never from this file.
 FILECONTENT = {
-    "ROOT": os.environ.get("FILECONTENT_ROOT", os.path.join(BASE_DIR, "content")),
+    "ROOT": os.environ.get("FILECONTENT_ROOT", os.path.join(BASE_DIR, "filecontent")),
     "REMOTE_URL": os.environ.get("FILECONTENT_REMOTE_URL"),
     "BRANCH": os.environ.get("FILECONTENT_BRANCH", "main"),
     "READ_ONLY": os.environ.get("FILECONTENT_READ_ONLY") == "1",
+}
+
+# Filesystem-first article repository (POC, see docs/content-repository.md).
+# Articles live in content/{MARKET}/{locale}/articles/{slug}.md; the ORM is
+# not involved. Only the markets/locales listed here are read or written.
+CONTENT_REPOSITORY = {
+    "ROOT": os.environ.get(
+        "CONTENT_REPOSITORY_ROOT", os.path.join(BASE_DIR, "content")
+    ),
+    "MARKETS": {
+        "CA": ["en", "fr"],
+        "US": ["en", "es"],
+    },
 }

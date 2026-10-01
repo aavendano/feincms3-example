@@ -43,8 +43,22 @@ project-specific code; the example only uses its public pieces
 cd packages/feincms3-filecontent && pytest
 ```
 
-The content working tree (`content/`) and `content.worktrees/` are git-ignored;
+The content working tree (`filecontent/`) and `filecontent.worktrees/` are git-ignored;
 `./manage.py filecontent_sync` clones them from `FILECONTENT_REMOTE_URL`.
+
+## Filesystem articles (POC)
+
+`app/content/` is a content repository for articles stored as Markdown in
+`content/{MARKET}/{locale}/articles/*.md` (settings: `CONTENT_REPOSITORY`).
+The ORM `Article` model is untouched and independent. Design, API and
+limitations: `docs/content-repository.md`. Tests use temporary directories:
+
+```
+./manage.py test app.content
+```
+
+Never point tests or experiments at the real `content/`; set
+`CONTENT_REPOSITORY_ROOT` to a copy.
 
 ## Linting
 
@@ -60,8 +74,8 @@ configured in `pyproject.toml` (`RUF012` and `E501` are ignored on purpose).
 
 ## Running the project
 
-The example project itself has no test suite (the filecontent package does,
-see above). Verify changes by running the app:
+The example project's only test suite is `app.content` (plus the
+filecontent package, see above). Verify changes by running the app:
 
 ```
 python3 -m venv venv

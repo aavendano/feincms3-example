@@ -11,5 +11,6 @@ htmlcov
 venv
 db.sqlite3
 /media
-/content
-/content.worktrees
+/filecontent
+/filecontent.worktrees
+/content/.content.lock

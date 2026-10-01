@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}{{ article.title }} - {{ block.super }}{% endblock %}
+
+{% block content %}
+<article lang="{{ article.locale }}" data-source="filesystem" data-article-id="{{ article.id }}">
+  <h1>{{ article.title }}</h1>
+  <p>{{ article.publication_date|date:"d.m.Y" }} · {{ article.category }} · {{ article.market }}/{{ article.locale }}</p>
+  {{ regions.main }}
+</article>
+{% endblock %}

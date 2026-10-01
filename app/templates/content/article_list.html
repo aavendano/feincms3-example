@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Articles {{ market }}/{{ locale }} - {{ block.super }}{% endblock %}
+
+{% block content %}
+  <h1>Articles <small>({{ market }} · {{ locale }})</small></h1>
+  <p class="content-source">Served from the filesystem content repository.</p>
+  {% for article in articles %}
+    <a href="{% url 'content:article-detail' market=article.market|lower locale=article.locale slug=article.slug %}" class="article">
+      <h2>{{ article.title }}</h2>
+      {{ article.publication_date|date:"d.m.Y" }} · {{ article.category }}
+    </a>
+  {% empty %}
+    <p>No published articles.</p>
+  {% endfor %}
+{% endblock %}
