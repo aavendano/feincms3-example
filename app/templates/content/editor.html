@@ -38,13 +38,25 @@ button.danger { color:var(--danger); border-color:#fecaca; margin-left:auto; }
 #notice.ok { display:block; background:var(--accent-bg); color:var(--accent); }
 #notice.err { display:block; background:#fef2f2; color:var(--danger); }
 .empty { padding:2rem; color:var(--muted); text-align:center; }
+.badge.git { background:#eff6ff; color:#1d4ed8; border-color:#bfdbfe; }
+.badge.warn { background:#fffbeb; color:#92400e; border-color:#fde68a; }
+#history { border-top:1px solid var(--border); }
+#history h3 { font-size:.85rem; margin:0; padding:.75rem 1rem; }
+#history table { width:100%; border-collapse:collapse; font-size:12px; }
+#history td { padding:.4rem 1rem; border-top:1px solid var(--border); vertical-align:top; }
+#history code { font-size:12px; }
+#history button { padding:.2rem .5rem; font-size:12px; }
+pre#diff { margin:0; padding:.75rem 1rem; max-height:20rem; overflow:auto; background:#0b1020; color:#e5e7eb; font-size:12px; }
+pre#diff .add { color:#86efac; } pre#diff .del { color:#fca5a5; }
 </style>
 </head>
 <body>
 <header>
   <a href="/admin-react/">← React Admin</a>
   <h1>Articles</h1>
-  <span class="badge" title="Stored as Markdown files, not in the database">📁 Filesystem repository</span>
+  <span class="badge" id="backend" title="Stored as Markdown files, not in the database">📁 Filesystem repository</span>
+  <span id="repo-state" class="badge" hidden></span>
+  <button type="button" id="sync" hidden title="Fetch, fast-forward and push. Never merges.">Sync with remote</button>
   <span id="root" class="meta"></span>
 </header>
 <main>
@@ -82,6 +94,11 @@ button.danger { color:var(--danger); border-color:#fecaca; margin-left:auto; }
         <button class="danger" type="button" id="delete">Delete file</button>
       </div>
     </form>
+    <div id="history" hidden>
+      <h3>History <span class="meta">(each save is a Git commit; restoring adds a new one)</span></h3>
+      <table><tbody id="history-rows"></tbody></table>
+      <pre id="diff" hidden></pre>
+    </div>
   </section>
 </main>
 <script>
@@ -199,6 +216,86 @@ button.danger { color:var(--danger); border-color:#fecaca; margin-left:auto; }
     link.hidden = !(article && article.public_url);
     if (article && article.public_url) link.href = article.public_url;
     document.querySelectorAll("#list li").forEach((li) => li.classList.toggle("active", !!article && li.dataset.id === article.id));
+    loadHistory(article);
+  }
+
+  const versioned = () => meta && meta.capabilities.includes("history");
+
+  async function loadHistory(article) {
+    const box = $("#history");
+    box.hidden = !(article && versioned());
+    $("#diff").hidden = true;
+    if (box.hidden) return;
+    const rows = $("#history-rows");
+    rows.replaceChildren();
+    const data = await call("GET", articleUrl(article.id) + "history/");
+    data.entries.forEach((entry, index) => {
+      const tr = document.createElement("tr");
+      const cells = [entry.short_version, entry.date.slice(0, 16).replace("T", " "), entry.author_name, entry.message];
+      cells.forEach((text, i) => {
+        const td = document.createElement("td");
+        if (i === 0) { const c = document.createElement("code"); c.textContent = text; td.append(c); } else { td.textContent = text; }
+        tr.append(td);
+      });
+      const actions = document.createElement("td");
+      const show = document.createElement("button");
+      show.type = "button"; show.textContent = "Diff";
+      show.addEventListener("click", () => showDiff(article, entry.version));
+      actions.append(show);
+      if (index > 0) {
+        const restore = document.createElement("button");
+        restore.type = "button"; restore.textContent = "Restore";
+        restore.addEventListener("click", () => restoreVersion(article, entry));
+        actions.append(" ", restore);
+      }
+      tr.append(actions);
+      rows.append(tr);
+    });
+  }
+
+  async function showDiff(article, version) {
+    const data = await call("GET", articleUrl(article.id) + "diff/?version=" + encodeURIComponent(version));
+    const pre = $("#diff");
+    pre.replaceChildren();
+    for (const line of data.diff.split("\n")) {
+      const span = document.createElement("span");
+      if (line.startsWith("+") && !line.startsWith("+++")) span.className = "add";
+      if (line.startsWith("-") && !line.startsWith("---")) span.className = "del";
+      span.textContent = line + "\n";
+      pre.append(span);
+    }
+    pre.hidden = false;
+  }
+
+  async function restoreVersion(article, entry) {
+    if (!confirm(`Restore ${article.id} to ${entry.short_version}? This creates a new commit.`)) return;
+    try {
+      const saved = await call("POST", articleUrl(article.id) + "restore/", { version: entry.version, expected_version: article.version });
+      fill(saved);
+      notice(savedMessage(saved, `Restored to ${entry.short_version}`), saved.commit && saved.commit.push_error ? "err" : "ok");
+      await Promise.all([loadList(), loadStatus()]);
+    } catch (e) { notice(e.message, "err"); }
+  }
+
+  function savedMessage(saved, prefix) {
+    let text = `${prefix || "Saved to"} ${saved.location}`;
+    const c = saved.commit;
+    if (c && c.sha) text += ` · commit ${c.sha.slice(0, 10)}` + (c.pushed ? " · pushed" : "");
+    if (c && c.sha === null) text += " · no changes";
+    if (c && c.push_error) text += ` · NOT pushed: ${c.push_error}`;
+    return text;
+  }
+
+  async function loadStatus() {
+    if (!meta || meta.source !== "git") return;
+    const badge = $("#repo-state");
+    try {
+      const s = await call("GET", `${API}repository/`);
+      badge.hidden = false;
+      badge.className = `badge ${s.ok ? "git" : "warn"}`;
+      badge.textContent = s.state ? `${s.branch || "detached"} · ${s.state}` + (s.ahead ? ` · ${s.ahead} unpushed` : "") : "not a Git working tree";
+      badge.title = (s.problems || []).join("\n");
+    } catch (e) { badge.hidden = false; badge.className = "badge warn"; badge.textContent = e.message; }
   }
 
   async function open(id) {
@@ -225,8 +322,8 @@ button.danger { color:var(--danger); border-color:#fecaca; margin-left:auto; }
         saved = await call("POST", `${API}articles/`, payload);
       }
       fill(saved);
-      notice(`Saved to ${saved.location}`, "ok");
-      await loadList();
+      notice(savedMessage(saved), saved.commit && saved.commit.push_error ? "err" : "ok");
+      await Promise.all([loadList(), loadStatus()]);
     } catch (e) {
       showErrors(e.data && e.data.errors);
       notice(e.message, "err");
@@ -236,14 +333,15 @@ button.danger { color:var(--danger); border-color:#fecaca; margin-left:auto; }
   $("#delete").addEventListener("click", async () => {
     if (!current || !confirm(`Delete ${current.location}?`)) return;
     try {
-      await call("DELETE", articleUrl(current.id), undefined, { "If-Match": current.version });
-      notice(`Deleted ${current.location}`, "ok");
+      const result = await call("DELETE", articleUrl(current.id), undefined, { "If-Match": current.version });
+      notice(`Deleted ${current.location}` + (result.commit && result.commit.sha ? ` · commit ${result.commit.sha.slice(0, 10)}` : ""), "ok");
+      $("#history").hidden = true;
       current = null;
       form.hidden = true;
       $("#editor-title").textContent = "Select an article";
       $("#editor-status").textContent = "";
       $("#location").textContent = "No file selected.";
-      await loadList();
+      await Promise.all([loadList(), loadStatus()]);
     } catch (e) { notice(e.message, "err"); }
   });
 
@@ -258,6 +356,18 @@ button.danger { color:var(--danger); border-color:#fecaca; margin-left:auto; }
       return;
     }
     $("#root").textContent = `${meta.root}/<MARKET>/<locale>/articles/*.md`;
+    if (meta.source === "git") {
+      const backend = $("#backend");
+      backend.textContent = "📁 Filesystem repository · Git";
+      backend.classList.add("git");
+      $("#sync").hidden = false;
+      $("#sync").addEventListener("click", async () => {
+        try { await call("POST", `${API}repository/sync/`); notice("Synchronized with the remote.", "ok"); await loadList(); }
+        catch (e) { notice(e.message + (e.data && e.data.paths ? ` (${e.data.paths.join(", ")})` : ""), "err"); }
+        await loadStatus();
+      });
+      loadStatus();
+    }
     const markets = Object.keys(meta.markets);
     const locales = [...new Set(Object.values(meta.markets).flat())];
     options($("#f-market"), markets, "All markets");

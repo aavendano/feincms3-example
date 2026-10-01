@@ -37,6 +37,8 @@ LOCK_NAME = ".content.lock"
 
 
 class FilesystemArticleRepository(ContentRepository):
+    backend = "filesystem"
+
     def __init__(self, root, *, markets, lock_timeout=10):
         """
         ``markets`` maps market codes to their enabled locales, e.g.

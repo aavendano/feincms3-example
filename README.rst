@@ -79,8 +79,9 @@ Filesystem articles (proof of concept)
 ``content/{MARKET}/{locale}/articles/{slug}.md`` — no database rows. Edit
 them at ``http://127.0.0.1:8000/admin-react/content/articles/`` and view
 published ones at ``http://127.0.0.1:8000/content/ca/en/articles/``. Tests:
-``./manage.py test app.content``. Git is not wired in yet; see
-``docs/content-repository.md``.
+``./manage.py test app.content``. Set ``CONTENT_REPOSITORY_BACKEND=git``
+(with a root that is its own Git working tree) for one commit per edit,
+history and restore; see ``docs/content-repository.md``.
 
 The React admin SPA is at ``http://127.0.0.1:8000/admin-react/`` (same
 staff login). In development it is installed editable from the sibling

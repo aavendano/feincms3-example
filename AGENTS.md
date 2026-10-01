@@ -50,7 +50,9 @@ The content working tree (`filecontent/`) and `filecontent.worktrees/` are git-i
 
 `app/content/` is a content repository for articles stored as Markdown in
 `content/{MARKET}/{locale}/articles/*.md` (settings: `CONTENT_REPOSITORY`).
-The ORM `Article` model is untouched and independent. Design, API and
+The ORM `Article` model is untouched and independent. Backends:
+`filesystem` (default) and `git` (`app/content/git.py`, built on
+`feincms3_filecontent.repository`; one commit per change). Design, API and
 limitations: `docs/content-repository.md`. Tests use temporary directories:
 
 ```

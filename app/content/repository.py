@@ -7,12 +7,12 @@ never in files, paths or QuerySets. Backends decide where documents live:
 
     ContentRepository
         ├── FilesystemArticleRepository   (implemented: content/{market}/{locale}/articles/*.md)
-        └── GitArticleRepository          (future: same contract + history/commit/diff)
+        └── GitArticleRepository          (app/content/git.py: + history/diff/restore)
 
 Capabilities that only a versioned backend can offer (``history``, ``diff``,
-``move`` with rename tracking, ``commit``) are part of the interface so call
-sites can be written against it today; the filesystem backend raises
-``OperationNotSupported`` and advertises what it supports in ``capabilities``.
+``restore``, ``commit``) are part of the interface so call sites are written
+against it once; the plain filesystem backend raises ``OperationNotSupported``
+and every backend advertises what it supports in ``capabilities``.
 """
 
 import abc
@@ -51,6 +51,7 @@ class ChangeContext:
 
 
 class ContentRepository(abc.ABC):
+    backend = "abstract"
     capabilities = frozenset({"list", "get", "create", "update", "delete", "exists"})
 
     # Reading ----------------------------------------------------------------
@@ -92,6 +93,14 @@ class ContentRepository(abc.ABC):
 
     def commit(self, keys, *, context):
         raise OperationNotSupported("commit requires a versioned backend")
+
+    def restore(self, key, version, *, expected_version=None, context=None):
+        """Write the content ``key`` had at ``version`` as a *new* change."""
+        raise OperationNotSupported("restore requires a versioned backend")
+
+    def status(self):
+        """Backend health for UIs and monitoring (no secrets, no paths)."""
+        return {"backend": self.backend, "capabilities": sorted(self.capabilities)}
 
     def move(self, key, new_key, *, expected_version=None, context=None):
         article = self.get(key)

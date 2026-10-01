@@ -1,8 +1,15 @@
 # Content Repository (POC) — artículos filesystem-first
 
-Estado: **prueba de concepto, sólo `Article`**. Git **todavía no está
-implementado** en este repositorio de contenido. El modelo ORM `Article`,
-`Page` y el sistema de plugins de feincms3 siguen intactos y funcionando.
+Estado: **prueba de concepto, sólo `Article`**. Hay dos backends: `filesystem`
+(por defecto) y `git` (un commit por cambio, historial, diff y restore). El
+modelo ORM `Article`, `Page` y el sistema de plugins de feincms3 siguen
+intactos y funcionando.
+
+Decisión de arquitectura (opción 3): este repositorio de contenido es el
+modelo público (interfaz, schema por tipo, identidad por ruta, API JSON) y la
+maquinaria de `packages/feincms3-filecontent` es su implementación interna
+(Git, conflictos, lock; más adelante, el índice). El plugin `FileContent` del
+paquete queda sólo como puente mientras `Page` siga en el ORM.
 
 ## Arquitectura actual
 
@@ -88,8 +95,18 @@ salgan del root). Las primitivas de bajo nivel (`FileSystemContentStore`,
 | GET | `/api/content/articles/<MARKET>/<locale>/<slug>/` | `articles.view_article` |
 | PUT | ídem (puede mover) | `articles.change_article` |
 | DELETE | ídem (`If-Match: <version>`) | `articles.delete_article` |
+| GET | `…/<slug>/history/` | `articles.view_article` |
+| GET | `…/<slug>/diff/?version=<sha>[&to=<sha>]` | `articles.view_article` |
+| POST | `…/<slug>/restore/` `{"version", "expected_version"}` | `articles.change_article` |
+| GET | `/api/content/repository/` | `articles.view_article` |
+| POST | `/api/content/repository/sync/` | `articles.change_article` |
 
-Errores: `400 {"errors": {campo: [...]}}`, `401`, `403`, `404`, `409`.
+Las escrituras con el backend `git` devuelven además
+`"commit": {"sha", "pushed", "push_error"}`.
+
+Errores: `400 {"errors": {campo: [...]}}`, `401`, `403`, `404`, `409`
+(versión obsoleta, o conflicto de repositorio con `"paths"`), `501`
+(operación que el backend no soporta) y `503` (repositorio Git no disponible).
 Se reutilizan los permisos del modelo `Article` para no crear filas de
 permisos (que exigirían una migración).
 
@@ -112,7 +129,7 @@ página legacy en otra pestaña. Las alternativas eran:
 La API ya tiene la forma que necesitaría una ruta nativa de la SPA, así que
 migrar el editor allí no toca el backend.
 
-## Arquitectura futura
+## Backend Git
 
 ```text
 React Admin
@@ -125,24 +142,68 @@ Content Repository
       │
 ┌─────┴──────┐
 ▼            ▼
-Filesystem   Git   ← NO implementado todavía
+Filesystem   Git   (app/content/git.py)
+             └── feincms3_filecontent.repository (git CLI, estados, conflictos, lock)
 ```
 
-`GitArticleRepository` (o un `FilesystemArticleRepository` envuelto en un
-working tree Git) añadiría `clone`, `pull/fetch`, `branch`, `commit`,
-`history`, `diff`, `merge` y `push`. El contrato ya lo prepara:
+`GitArticleRepository` extiende el backend filesystem; las lecturas son
+idénticas y **Git nunca corre en lectura**. Cada `create`/`update`/`delete`
+(y `restore`) es exactamente un commit:
 
-* `ContentRepository.history/diff/commit` existen y hoy lanzan
-  `OperationNotSupported`; `capabilities` anuncia qué soporta cada backend.
-* Toda escritura recibe un `ChangeContext` (autor, mensaje) que hoy se ignora
-  y mañana será el autor y el mensaje del commit.
-* `version` es un hash de contenido: un backend Git puede mantener la misma
-  semántica de bloqueo optimista.
-* Las identidades son rutas estables, legibles y sin IDs de base de datos:
-  diffs y merges de Git se entienden sin el ORM.
-* `packages/feincms3-filecontent` ya contiene una capa Git explícita
-  (estados, sync incremental, rollback no destructivo) que puede convertirse
-  en ese backend.
+* autor = el usuario de Django (`ChangeContext`), committer = identidad del
+  sistema (`GIT.COMMITTER_NAME/EMAIL`); mensaje generado o el del contexto;
+* sólo se commitean las rutas tocadas; mover es un único commit con rename;
+* si algo falla antes del commit, archivos e índice de Git vuelven a su
+  estado previo;
+* un cambio sin confirmar hecho a mano en esa ruta bloquea la escritura
+  (`409` con `paths`), nunca se mezcla en silencio; `commit()` permite
+  confirmarlo de forma explícita;
+* con `AUTO_PUSH` se hace push tras cada commit. Si el push es rechazado, el
+  commit queda local (estado `AHEAD`/`DIVERGED`) y la respuesta lo dice
+  (`commit.push_error`);
+* `sync()` hace fetch + fast-forward + push. Si las historias divergen lanza
+  `DivergedError` con las rutas tocadas en ambos lados y no cambia nada:
+  reconciliar es una decisión humana;
+* `history()`, `diff()` y `restore()` trabajan por artículo; `restore()` crea
+  un commit nuevo (también recrea artículos borrados). Nunca se reescribe la
+  historia.
+
+Configuración:
+
+```python
+CONTENT_REPOSITORY = {
+    "BACKEND": "git",
+    "ROOT": "/srv/content",  # raíz de SU PROPIO working tree Git
+    "MARKETS": {"CA": ["en", "fr"], "US": ["en", "es"]},
+    "GIT": {"BRANCH": "main", "AUTO_PUSH": True},
+}
+```
+
+`ROOT` debe ser la raíz de un working tree propio: si es un subdirectorio de
+otro repositorio (por ejemplo `content/` dentro de este proyecto) las
+escrituras se rechazan con un error explícito. Por eso el ejemplo usa
+`filesystem` por defecto. Para probar Git:
+
+```bash
+git init --bare -b main /tmp/content.git
+git clone /tmp/content.git /tmp/content
+cp -r content/. /tmp/content/ && git -C /tmp/content add -A \
+  && git -C /tmp/content commit -m "Import articles" && git -C /tmp/content push origin main
+CONTENT_REPOSITORY_BACKEND=git CONTENT_REPOSITORY_ROOT=/tmp/content ./manage.py runserver
+```
+
+El editor muestra entonces el estado del repositorio (rama, `clean`/`ahead`/…),
+el historial con diffs, "Restore" por versión y "Sync with remote".
+
+### Pendiente (siguientes pasos de la opción 3)
+
+* **Índice**: `list()` todavía recorre los archivos. El siguiente paso es
+  proyectar los artículos en un índice reconstruible y actualizarlo de forma
+  incremental desde los diffs de Git (el patrón de `ContentIndex` del paquete).
+* **Ramas de revisión / pull requests** para artículos (el paquete ya tiene
+  worktrees y proveedores GitHub/GitLab/Bitbucket).
+* **Clonado inicial** desde un remoto y comando de estado para artículos.
+* Retirar `FileContent` cuando `Page` pase al ComponentRegistry.
 
 ## ORM vs filesystem (lo que demuestra el POC)
 
@@ -221,4 +282,5 @@ Esto **no** se ha refactorizado: `PagePlugin`, `RichText`, `Image` y
 ```
 
 Para no tocar `content/` del repositorio al experimentar, usa
-`CONTENT_REPOSITORY_ROOT=/tmp/content ./manage.py runserver` con una copia.
+`CONTENT_REPOSITORY_ROOT=/tmp/content ./manage.py runserver` con una copia
+(y `CONTENT_REPOSITORY_BACKEND=git` si esa copia es un working tree Git).

@@ -130,10 +130,17 @@ FILECONTENT = {
 # Filesystem-first article repository (POC, see docs/content-repository.md).
 # Articles live in content/{MARKET}/{locale}/articles/{slug}.md; the ORM is
 # not involved. Only the markets/locales listed here are read or written.
+# Set CONTENT_REPOSITORY_BACKEND=git with a ROOT that is its own Git working
+# tree to get one commit per edit, history and restore.
 CONTENT_REPOSITORY = {
+    "BACKEND": os.environ.get("CONTENT_REPOSITORY_BACKEND", "filesystem"),
     "ROOT": os.environ.get(
         "CONTENT_REPOSITORY_ROOT", os.path.join(BASE_DIR, "content")
     ),
+    "GIT": {
+        "BRANCH": os.environ.get("CONTENT_REPOSITORY_BRANCH", "main"),
+        "AUTO_PUSH": os.environ.get("CONTENT_REPOSITORY_AUTO_PUSH", "1") == "1",
+    },
     "MARKETS": {
         "CA": ["en", "fr"],
         "US": ["en", "es"],
