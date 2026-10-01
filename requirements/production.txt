@@ -8,5 +8,7 @@ gunicorn
 psycopg[binary]
 whitenoise
 
-# django-admin-react from the main branch of the GitHub repo
-django-admin-react @ git+https://github.com/aavendano/django-admin-react.git@main
+# django-admin-react is NOT listed here: installing it from git skips the
+# SPA bundle (django_admin_react.W002). After installing this file, run
+#   scripts/install-admin-react.sh
+# which clones the fork (main), builds the bundle and installs the package.

@@ -12,11 +12,13 @@ Setup a virtualenv and install **development** dependencies::
     python3 -m venv venv
     . venv/bin/activate
     pip install -r requirements/development.txt
+    scripts/install-admin-react.sh --editable   # builds the SPA bundle
 
 ``requirements.txt`` is an alias for the development set. For a production-style
 install (example stack: gunicorn, Postgres driver, whitenoise)::
 
     pip install -r requirements/production.txt
+    scripts/install-admin-react.sh              # clone fork, build SPA, install
 
 Settings live under ``app/settings/``:
 
@@ -72,5 +74,8 @@ the admin under *File content › Documents*.
 
 The React admin SPA is at ``http://127.0.0.1:8000/admin-react/`` (same
 staff login). In development it is installed editable from the sibling
-checkout ``../django-admin-react``; production installs from the GitHub
-``main`` branch (see ``requirements/production.txt``).
+checkout ``../django-admin-react``; production builds and installs the
+fork's ``main`` branch. The SPA bundle is not committed in the fork, so a
+plain ``pip install git+…`` leaves it out (``django_admin_react.W002``);
+``scripts/install-admin-react.sh`` runs the Vite build first. It needs node
+>= 20 and pnpm (``corepack enable``).

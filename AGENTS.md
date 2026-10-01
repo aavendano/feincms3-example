@@ -19,8 +19,15 @@ Shared settings live in `app/settings/base.py`. Shared packages live in
 
 `django-admin-react` is installed per environment:
 
-- development: editable from `/home/alejandro/apps/django-admin-react`
-- production: `git+https://github.com/aavendano/django-admin-react.git@main`
+- development: editable from `/home/alejandro/apps/django-admin-react`;
+  build its SPA bundle with `scripts/install-admin-react.sh --editable`
+- production: `scripts/install-admin-react.sh` clones
+  `https://github.com/aavendano/django-admin-react.git@main`, builds the
+  bundle and pip-installs it (not listed in `requirements/production.txt`)
+
+The fork does not commit the built bundle, so installing it without the
+Vite build triggers `django_admin_react.W002` and the SPA shows "not built
+yet". Needs node >= 20 and pnpm (`corepack enable`).
 
 SPA mount: `/admin-react/` (legacy admin remains at `/admin/`).
 

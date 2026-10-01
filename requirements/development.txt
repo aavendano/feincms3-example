@@ -6,5 +6,6 @@
 # Local tooling (see AGENTS.md)
 prek
 
-# Editable checkout of django-admin-react (sibling repo)
+# Editable checkout of django-admin-react (sibling repo). Build its SPA bundle
+# once with `scripts/install-admin-react.sh --editable` (avoids W002).
 -e /home/alejandro/apps/django-admin-react
