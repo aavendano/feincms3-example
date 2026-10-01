@@ -12,6 +12,8 @@ API = "/api/content/"
 
 
 class APITests(TempContentMixin, TestCase):
+    index = True
+
     def setUp(self):
         super().setUp()
         self.admin = User.objects.create_superuser("admin", "a@example.com", "pw")
@@ -131,6 +133,8 @@ class APITests(TempContentMixin, TestCase):
 
 
 class PublicViewTests(TempContentMixin, TestCase):
+    index = True
+
     def test_published_article_renders_from_markdown(self):
         self.repo.create(make_article(body="# Heading\n\n*emphasis*"))
         response = self.client.get("/content/ca/en/articles/hello/")
@@ -172,6 +176,8 @@ class PublicViewTests(TempContentMixin, TestCase):
 
 
 class RenderingTests(TempContentMixin, TestCase):
+    index = True
+
     def test_region_renderer_renders_non_orm_component(self):
         from app.content.rendering import (  # noqa: PLC0415
             MarkdownBlock,

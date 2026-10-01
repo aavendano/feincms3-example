@@ -61,7 +61,7 @@ pre#diff .add { color:#86efac; } pre#diff .del { color:#fca5a5; }
 </header>
 <main>
   <section class="card">
-    <h2>Documents <button type="button" id="new">+ New article</button></h2>
+    <h2><span>Documents <span id="count" class="meta"></span></span> <button type="button" id="new">+ New article</button></h2>
     <div class="filters">
       <select id="f-market"><option value="">All markets</option></select>
       <select id="f-locale"><option value="">All locales</option></select>
@@ -149,6 +149,7 @@ pre#diff .add { color:#86efac; } pre#diff .del { color:#fca5a5; }
       if (v) params.set(f, v);
     }
     const data = await call("GET", `${API}articles/?${params}`);
+    $("#count").textContent = `(${data.count})`;
     const list = $("#list");
     list.replaceChildren();
     if (!data.results.length) {
@@ -287,13 +288,19 @@ pre#diff .add { color:#86efac; } pre#diff .del { color:#fca5a5; }
   }
 
   async function loadStatus() {
-    if (!meta || meta.source !== "git") return;
+    if (!meta) return;
     const badge = $("#repo-state");
     try {
       const s = await call("GET", `${API}repository/`);
+      const index = s.index ? ` · index ${s.index.state}` : "";
       badge.hidden = false;
-      badge.className = `badge ${s.ok ? "git" : "warn"}`;
-      badge.textContent = s.state ? `${s.branch || "detached"} · ${s.state}` + (s.ahead ? ` · ${s.ahead} unpushed` : "") : "not a Git working tree";
+      if (meta.source === "git") {
+        badge.className = `badge ${s.ok ? "git" : "warn"}`;
+        badge.textContent = (s.state ? `${s.branch || "detached"} · ${s.state}` + (s.ahead ? ` · ${s.ahead} unpushed` : "") : "not a Git working tree") + index;
+      } else {
+        badge.className = "badge";
+        badge.textContent = s.index ? `index · ${s.index.rows} rows` + (s.index.invalid ? ` · ${s.index.invalid} invalid` : "") : "no index";
+      }
       badge.title = (s.problems || []).join("\n");
     } catch (e) { badge.hidden = false; badge.className = "badge warn"; badge.textContent = e.message; }
   }
@@ -356,18 +363,28 @@ pre#diff .add { color:#86efac; } pre#diff .del { color:#fca5a5; }
       return;
     }
     $("#root").textContent = `${meta.root}/<MARKET>/<locale>/articles/*.md`;
-    if (meta.source === "git") {
+    const isGit = meta.source === "git";
+    if (isGit) {
       const backend = $("#backend");
       backend.textContent = "📁 Filesystem repository · Git";
       backend.classList.add("git");
-      $("#sync").hidden = false;
-      $("#sync").addEventListener("click", async () => {
-        try { await call("POST", `${API}repository/sync/`); notice("Synchronized with the remote.", "ok"); await loadList(); }
-        catch (e) { notice(e.message + (e.data && e.data.paths ? ` (${e.data.paths.join(", ")})` : ""), "err"); }
+    }
+    if (isGit || meta.capabilities.includes("index")) {
+      const sync = $("#sync");
+      sync.hidden = false;
+      sync.textContent = isGit ? "Sync with remote" : "Reindex";
+      sync.title = isGit ? "Fetch, fast-forward, push and reindex. Never merges." : "Pick up files changed outside the editor.";
+      sync.addEventListener("click", async () => {
+        try {
+          const r = await call("POST", `${API}repository/sync/`);
+          const i = r.index || {};
+          notice(`${isGit ? "Synchronized with the remote. " : ""}Index: ${i.mode} (${i.upserted || 0} updated, ${i.deleted || 0} removed).`, "ok");
+          await loadList();
+        } catch (e) { notice(e.message + (e.data && e.data.paths ? ` (${e.data.paths.join(", ")})` : ""), "err"); }
         await loadStatus();
       });
-      loadStatus();
     }
+    loadStatus();
     const markets = Object.keys(meta.markets);
     const locales = [...new Set(Object.values(meta.markets).flat())];
     options($("#f-market"), markets, "All markets");

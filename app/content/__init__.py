@@ -29,12 +29,22 @@ def get_article_repository():
             "ROOT": ...,               # for "git": root of its own working tree
             "MARKETS": {"CA": ["en", "fr"]},
             "GIT": {"BRANCH": "main", "AUTO_PUSH": True},
+            "INDEX": True,             # list/count from the ORM index (default)
         }
     """
+    conf = settings.CONTENT_REPOSITORY
+    repository = _backend(conf)
+    if conf.get("INDEX", True):
+        from .index import IndexedArticleRepository  # noqa: PLC0415
+
+        repository = IndexedArticleRepository(repository)
+    return repository
+
+
+def _backend(conf):
     from .filesystem import FilesystemArticleRepository  # noqa: PLC0415
     from .git import GitArticleRepository  # noqa: PLC0415
 
-    conf = settings.CONTENT_REPOSITORY
     backend = conf.get("BACKEND", "filesystem")
     if backend == "filesystem":
         return FilesystemArticleRepository(conf["ROOT"], markets=conf["MARKETS"])

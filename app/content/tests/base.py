@@ -34,14 +34,25 @@ def make_article(market="CA", locale="en", slug="hello", **fields):
 
 
 class TempContentMixin:
-    """Every test gets its own empty content root; real content is untouched."""
+    """
+    Every test gets its own empty content root; real content is untouched.
+
+    ``index = False`` tests the raw backend (no database); ``True`` the full
+    stack used by the API and views (backend wrapped by the ORM index).
+    """
+
+    index = False
 
     def setUp(self):
         super().setUp()
         self.root = Path(tempfile.mkdtemp(prefix="content-tests-"))
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         override = override_settings(
-            CONTENT_REPOSITORY={"ROOT": str(self.root), "MARKETS": MARKETS}
+            CONTENT_REPOSITORY={
+                "ROOT": str(self.root),
+                "MARKETS": MARKETS,
+                "INDEX": self.index,
+            }
         )
         override.enable()
         self.addCleanup(override.disable)

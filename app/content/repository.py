@@ -35,6 +35,8 @@ class ArticleFilter:
     status: str | None = None  # "draft" / "published" (as stored)
     published_only: bool = False  # status=published AND publication_date <= now
     order: str = ORDER_NEWEST_FIRST
+    limit: int | None = None
+    offset: int = 0
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,10 @@ class ContentRepository(abc.ABC):
     @abc.abstractmethod
     def list(self, query=None):
         """Return articles matching ``query`` (an ``ArticleFilter``), ordered."""
+
+    def count(self, query=None):
+        """Number of articles matching ``query`` (ignoring limit/offset)."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     def get(self, key):

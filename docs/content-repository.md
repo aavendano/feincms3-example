@@ -195,14 +195,55 @@ CONTENT_REPOSITORY_BACKEND=git CONTENT_REPOSITORY_ROOT=/tmp/content ./manage.py 
 El editor muestra entonces el estado del repositorio (rama, `clean`/`ahead`/…),
 el historial con diffs, "Restore" por versión y "Sync with remote".
 
+## Índice (proyección reconstruible)
+
+```text
+archivos (fuente de verdad) ──sync──▶ ArticleIndex (ORM, app/content/models.py)
+                                          │
+IndexedArticleRepository.list()/count() ◀─┘     get()/escrituras ──▶ backend (archivos)
+```
+
+`get_article_repository()` envuelve el backend en `IndexedArticleRepository`
+(`app/content/index.py`) salvo que `CONTENT_REPOSITORY["INDEX"]` sea `False`.
+
+* **`list()` / `count()`** consultan `ArticleIndex`: filtros por market,
+  locale, categoría y estado, "publicado ahora", orden por fecha y paginación
+  (`limit`/`offset`) en SQL, sin leer archivos (2 consultas). Devuelven
+  `ArticleSummary` (sin `body`).
+* **`get()`** sigue leyendo el archivo: el cuerpo nunca sale del índice.
+* **Escrituras** (create/update/delete/move/restore/commit) actualizan las
+  filas afectadas dentro del lock de escritura, releyendo el archivo escrito.
+  En modo Git, si no había nada pendiente, `last_indexed_sha` avanza al nuevo
+  commit y el índice sigue `current`.
+* **Sincronización incremental**:
+  * Git: archivos cambiados entre `last_indexed_sha` y `HEAD` (añadidos,
+    modificados, borrados, renombrados), con el planificador de
+    `feincms3_filecontent.sync`. Si el commit previo ya no existe (historia
+    reescrita) o cambió el root: rebuild completo.
+  * Filesystem: compara `mtime`/tamaño guardados y sólo reprocesa lo que
+    cambió.
+* **Cuándo se sincroniza**: escrituras por el repositorio (inmediato),
+  `POST /api/content/repository/sync/` (botón *Sync with remote* / *Reindex*
+  del editor), `./manage.py content_index [--rebuild|--status]`, y el primer
+  listado con el índice vacío. Los cambios hechos por fuera (`git pull` a
+  mano, edición directa de archivos) aparecen tras la siguiente sincronización.
+* **Archivos inválidos** se indexan con su error, nunca se listan y se
+  informan en `/api/content/meta/` (`invalid_documents`).
+* **Desechable**: borrar `ArticleIndex` e `IndexState` y volver a listar
+  produce el mismo resultado. Es dato operacional, no contenido (por eso sí
+  tiene migración: `content.0001_initial`).
+
+No se reutilizó la tabla `ContentIndex` del paquete: no distingue entre
+roots de contenido y guarda los campos en JSON. Un índice tipado por tipo de
+contenido permite filtrar y ordenar con índices de base de datos. El *patrón*
+(proyección + estado + sync incremental por diff) sí es el del paquete.
+
 ### Pendiente (siguientes pasos de la opción 3)
 
-* **Índice**: `list()` todavía recorre los archivos. El siguiente paso es
-  proyectar los artículos en un índice reconstruible y actualizarlo de forma
-  incremental desde los diffs de Git (el patrón de `ContentIndex` del paquete).
 * **Ramas de revisión / pull requests** para artículos (el paquete ya tiene
   worktrees y proveedores GitHub/GitLab/Bitbucket).
 * **Clonado inicial** desde un remoto y comando de estado para artículos.
+* **Ruta nativa en la SPA** para el editor (requiere push al fork).
 * Retirar `FileContent` cuando `Page` pase al ComponentRegistry.
 
 ## ORM vs filesystem (lo que demuestra el POC)
@@ -214,7 +255,7 @@ el historial con diffs, "Restore" por versión y "Sync with remote".
 | Migraciones al cambiar el schema | Sí | No (schema en código; documentos validados al leer) |
 | Market / locale | No modelado | Parte de la identidad (ruta) |
 | Diff / revisión legible | No | Sí (texto plano; Git después) |
-| Consultas complejas, joins, paginación de BD | Sí | Lineal sobre archivos; requiere índice para escalar |
+| Consultas, orden, paginación | Sí | Sí, vía `ArticleIndex` (proyección reconstruible) |
 | Imágenes (`Image` inline) | Sí | No (pendiente: referencias de media) |
 | URLs vía feincms3 apps (`reverse_app`) | Sí | Rutas propias `/content/{market}/{locale}/articles/` |
 | Edición concurrente | Último que guarda gana | 409 por versión |
@@ -279,6 +320,7 @@ Esto **no** se ha refactorizado: `PagePlugin`, `RichText`, `Image` y
 # Editor:  http://127.0.0.1:8000/admin-react/content/articles/   (login staff)
 # Público: http://127.0.0.1:8000/content/ca/en/articles/
 ./manage.py test app.content
+./manage.py content_index --status   # estado del índice; --rebuild para regenerarlo
 ```
 
 Para no tocar `content/` del repositorio al experimentar, usa

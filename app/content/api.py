@@ -7,7 +7,7 @@ auth). Authorization reuses the existing ``articles`` permissions
 migration — are needed for the proof of concept.
 
     GET    /api/content/meta/
-    GET    /api/content/articles/?market=CA&locale=en&category=blog&status=draft
+    GET    /api/content/articles/?market=CA&locale=en&category=blog&status=draft&limit=20&offset=0
     POST   /api/content/articles/
     GET    /api/content/articles/<MARKET>/<locale>/<slug>/
     PUT    /api/content/articles/<MARKET>/<locale>/<slug>/   (body may move it)
@@ -154,6 +154,23 @@ def written(article, repository, status=200):
     )
 
 
+MAX_PAGE_SIZE = 200
+
+
+def _int_param(params, name, default, *, maximum=None):
+    raw = params.get(name)
+    if raw in (None, ""):
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise InvalidDocument({name: ["Must be an integer."]}) from None
+    if value < 0 or (maximum is not None and value > maximum):
+        limit = f" and at most {maximum}" if maximum is not None else ""
+        raise InvalidDocument({name: [f"Must be at least 0{limit}."]})
+    return value
+
+
 def read_json(request):
     try:
         data = json.loads(request.body or b"{}")
@@ -225,20 +242,23 @@ def article_collection(request):
     status = params.get("status") or None
     if status and status not in schemas.STATUSES:
         raise InvalidDocument({"status": ["Unknown status."]})
-    articles = repository.list(
-        ArticleFilter(
-            market=params.get("market") or None,
-            locale=params.get("locale") or None,
-            category=params.get("category") or None,
-            status=status,
-            order=ORDER_OLDEST_FIRST
-            if params.get("order") == "publication_date"
-            else "-publication_date",
-        )
+    query = ArticleFilter(
+        market=params.get("market") or None,
+        locale=params.get("locale") or None,
+        category=params.get("category") or None,
+        status=status,
+        order=ORDER_OLDEST_FIRST
+        if params.get("order") == "publication_date"
+        else "-publication_date",
+        limit=_int_param(params, "limit", None, maximum=MAX_PAGE_SIZE),
+        offset=_int_param(params, "offset", 0),
     )
+    articles = repository.list(query)
     return JsonResponse(
         {
-            "count": len(articles),
+            "count": repository.count(query),
+            "limit": query.limit,
+            "offset": query.offset,
             "results": [
                 to_json(a, repository=repository, with_body=False) for a in articles
             ],
@@ -312,7 +332,8 @@ def repository_status(request):
 @require_http_methods(["POST"])
 @staff_api(permission="articles.change_article")
 def repository_sync(request):
+    """Git: fetch/fast-forward/push. Indexed repositories: then reindex."""
     repository = get_article_repository()
     if not hasattr(repository, "sync"):
-        raise OperationNotSupported("sync requires a Git backend")
+        raise OperationNotSupported("sync requires a Git backend or the index")
     return JsonResponse(repository.sync())

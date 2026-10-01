@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "app",
     "app.pages",
     "app.articles",
+    "app.content",
 ]
 
 MIDDLEWARE = MIDDLEWARE_CLASSES = [

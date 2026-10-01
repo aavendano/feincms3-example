@@ -256,7 +256,7 @@ class GitAPITests(GitContentMixin, TestCase):
         self.url = "/api/content/articles/CA/en/hello/"
 
     def test_factory_builds_git_backend(self):
-        self.assertIsInstance(get_article_repository(), GitArticleRepository)
+        self.assertIsInstance(get_article_repository().inner, GitArticleRepository)
         meta = self.client.get("/api/content/meta/").json()
         self.assertEqual(meta["source"], "git")
         self.assertIn("history", meta["capabilities"])
@@ -321,9 +321,10 @@ class FilesystemBackendTests(TestCase):
                 ).status_code,
                 501,
             )
-            self.assertEqual(
-                self.client.post("/api/content/repository/sync/").status_code, 501
-            )
+            # Without Git, "sync" means reindex.
+            response = self.client.post("/api/content/repository/sync/")
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("index", response.json())
             self.assertEqual(
                 self.client.get("/api/content/repository/").json()["backend"],
                 "filesystem",
