@@ -24,6 +24,21 @@ Shared settings live in `app/settings/base.py`. Shared packages live in
 
 SPA mount: `/admin-react/` (legacy admin remains at `/admin/`).
 
+## feincms3-filecontent
+
+`packages/feincms3-filecontent/` is a reusable app (own `pyproject.toml`,
+`README.md`, tests) installed editable in development. Keep it free of
+project-specific code; the example only uses its public pieces
+(`FileContent` abstract plugin, `FileContentInline`, `render_filecontent`,
+`FILECONTENT` setting). Its tests run without network against local Git repos:
+
+```
+cd packages/feincms3-filecontent && pytest
+```
+
+The content working tree (`content/`) and `content.worktrees/` are git-ignored;
+`./manage.py filecontent_sync` clones them from `FILECONTENT_REMOTE_URL`.
+
 ## Linting
 
 Run all hooks over the whole tree:
@@ -38,7 +53,8 @@ configured in `pyproject.toml` (`RUF012` and `E501` are ignored on purpose).
 
 ## Running the project
 
-There is no test suite. Verify changes by running the app:
+The example project itself has no test suite (the filecontent package does,
+see above). Verify changes by running the app:
 
 ```
 python3 -m venv venv

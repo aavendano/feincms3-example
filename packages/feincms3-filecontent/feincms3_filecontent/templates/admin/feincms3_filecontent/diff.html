@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate "Home" %}</a>
+  &rsaquo; <a href="{% url 'admin:feincms3_filecontent_history' %}?path={{ path|urlencode }}">{{ path }}</a>
+  &rsaquo; <code>{{ sha|slice:":10" }}</code>
+</div>
+{% endblock %}
+
+{% block content %}
+<pre style="white-space:pre-wrap;font-size:13px">{{ diff }}</pre>
+{% endblock %}

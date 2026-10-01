@@ -1,5 +1,8 @@
 -r base.txt
 
+# feincms3-filecontent from this repository
+./packages/feincms3-filecontent
+
 # Example production stack — adapt versions / packages for your deploy.
 gunicorn
 psycopg[binary]

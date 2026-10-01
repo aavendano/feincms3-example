@@ -48,6 +48,28 @@ Start the runserver::
 Open ``http://127.0.0.1:8000/`` and ``http://127.0.0.1:8000/admin/`` and
 dive in!
 
+Markdown content from Git (feincms3-filecontent)
+================================================
+
+``packages/feincms3-filecontent`` is a reusable app that lets pages render
+Markdown documents stored in a Git repository (see its ``README.md``). The
+example wires it as the *file content* plugin. To try it with a throwaway local
+"remote" built from ``fixtures/content``::
+
+    git init --bare -b main /tmp/content.git
+    git clone /tmp/content.git /tmp/content-seed
+    cp -r fixtures/content/. /tmp/content-seed/
+    git -C /tmp/content-seed add -A
+    git -C /tmp/content-seed commit -m "Sample content"
+    git -C /tmp/content-seed push origin main
+
+    export FILECONTENT_REMOTE_URL=/tmp/content.git
+    ./manage.py filecontent_sync   # clones into ./content and indexes it
+
+Then add a *file content* plugin to a page and pick ``about.md``. Documents
+can be edited, committed, reviewed on branches and restored from history in
+the admin under *File content › Documents*.
+
 The React admin SPA is at ``http://127.0.0.1:8000/admin-react/`` (same
 staff login). In development it is installed editable from the sibling
 checkout ``../django-admin-react``; production installs from the GitHub

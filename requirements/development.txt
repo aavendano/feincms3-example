@@ -1,5 +1,8 @@
 -r base.txt
 
+# feincms3-filecontent, editable from this repository
+-e ./packages/feincms3-filecontent
+
 # Local tooling (see AGENTS.md)
 prek
 

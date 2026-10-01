@@ -1,0 +1,42 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
+
+[project]
+name = "feincms3-filecontent"
+version = "0.1.0"
+description = "Editorial content as flat files, versioned by Git, structured and served by feincms3"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.10"
+classifiers = [
+  "Framework :: Django",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+  "django>=4.2",
+  "django-content-editor>=7",
+  "feincms3>=5",
+  "markdown>=3.4",
+  "pyyaml>=6",
+]
+optional-dependencies.tests = [
+  "pytest",
+  "pytest-django",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = [ "feincms3_filecontent" ]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+pythonpath = [ "." ]
+testpaths = [ "tests" ]
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+lint.per-file-ignores."feincms3_filecontent/exceptions.py" = [
+  # DocumentNotFound, MergeConflict, PushRejected read better without "Error".
+  "N818",
+]
+lint.isort.known-first-party = [ "feincms3_filecontent", "tests" ]
