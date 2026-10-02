@@ -1,13 +1,20 @@
 # Content Repository (POC) — artículos filesystem-first
 
-Estado: **prueba de concepto, sólo `Article`**. Git **todavía no está
-implementado** en este repositorio de contenido. El modelo ORM `Article`,
-`Page` y el sistema de plugins de feincms3 siguen intactos y funcionando.
+Estado: **prueba de concepto, sólo `Article`**. Hay dos backends: `filesystem`
+(por defecto) y `git` (un commit por cambio, historial, diff y restore). El
+modelo ORM `Article`, `Page` y el sistema de plugins de feincms3 siguen
+intactos y funcionando.
+
+Decisión de arquitectura (opción 3): este repositorio de contenido es el
+modelo público (interfaz, schema por tipo, identidad por ruta, API JSON) y la
+maquinaria de `packages/feincms3-filecontent` es su implementación interna
+(Git, conflictos, lock; más adelante, el índice). El plugin `FileContent` del
+paquete queda sólo como puente mientras `Page` siga en el ORM.
 
 ## Arquitectura actual
 
 ```text
-React Admin  (/admin-react/content/articles/)
+React Admin  (/admin-react/content/articles/, ruta nativa vía CUSTOM_PAGES)
      │  fetch + cookie de sesión + X-CSRFToken
      ▼
 Django API   (/api/content/…)              app/content/api.py
@@ -88,31 +95,47 @@ salgan del root). Las primitivas de bajo nivel (`FileSystemContentStore`,
 | GET | `/api/content/articles/<MARKET>/<locale>/<slug>/` | `articles.view_article` |
 | PUT | ídem (puede mover) | `articles.change_article` |
 | DELETE | ídem (`If-Match: <version>`) | `articles.delete_article` |
+| GET | `…/<slug>/history/` | `articles.view_article` |
+| GET | `…/<slug>/diff/?version=<sha>[&to=<sha>]` | `articles.view_article` |
+| POST | `…/<slug>/restore/` `{"version", "expected_version"}` | `articles.change_article` |
+| GET | `/api/content/repository/` | `articles.view_article` |
+| POST | `/api/content/repository/sync/` | `articles.change_article` |
 
-Errores: `400 {"errors": {campo: [...]}}`, `401`, `403`, `404`, `409`.
+Las escrituras con el backend `git` devuelven además
+`"commit": {"sha", "pushed", "push_error"}`.
+
+Errores: `400 {"errors": {campo: [...]}}`, `401`, `403`, `404`, `409`
+(versión obsoleta, o conflicto de repositorio con `"paths"`), `501`
+(operación que el backend no soporta) y `503` (repositorio Git no disponible).
 Se reutilizan los permisos del modelo `Article` para no crear filas de
 permisos (que exigirían una migración).
 
-### ¿Por qué el editor no es una ruta nativa de la SPA?
+### El editor dentro de la SPA (`CUSTOM_PAGES`)
 
 django-admin-react pinta lo que expone la REST API a partir de los
-`ModelAdmin`. No tiene un punto de extensión para recursos que no son
-modelos: su único hook, las *custom views* de `get_urls()`, enlaza a la
-página legacy en otra pestaña. Las alternativas eran:
+`ModelAdmin`; no tenía punto de extensión para recursos que no son modelos.
+El fork (`aavendano/django-admin-react`, rama `ccr-16241950-g2o8f6`) añade
+uno **genérico**: `DJANGO_ADMIN_REACT["CUSTOM_PAGES"]`. Cada entrada es un
+enlace en el sidebar + una ruta del cliente cuyo contenido es un módulo ES
+del proyecto (`mount(element, context)`). El paquete no aprende nada de
+artículos: no añade endpoints ni permisos, sólo hospeda el módulo.
 
-1. Un modelo falso o *proxy* para colgarse del registry → genera migraciones
-   y obliga a emular un QuerySet. Descartado.
-2. Una ruta nueva dentro del fork de la SPA → cambio en otro repositorio,
-   con su build. Es el siguiente paso natural (ver más abajo).
-3. **Elegida para el POC:** una página servida bajo `/admin-react/content/articles/`
-   (antes del catch-all de la SPA). Comparte sesión, cookie CSRF y login
-   staff, y sólo habla con `/api/content/`. Es JavaScript sin dependencias ni
-   build.
+* El editor vive en `app/static/content/article-editor.js` (un único
+  código; estilos y markup acotados bajo `.fse`).
+* `app/settings/base.py` lo registra en `CUSTOM_PAGES` (grupo *Content*,
+  permiso `articles.view_article`) **sólo si** el django-admin-react
+  instalado lo soporta (`find_spec("django_admin_react.custom_pages")`).
+* Si no lo soporta (por ejemplo, `main` del fork antes de fusionar la rama),
+  `app/urls.py` sirve el mismo módulo en una página independiente en la
+  misma URL, `/admin-react/content/articles/`. Ningún modo rompe al otro.
 
-La API ya tiene la forma que necesitaría una ruta nativa de la SPA, así que
-migrar el editor allí no toca el backend.
+Para usar la ruta nativa hasta que la rama del fork se fusione:
 
-## Arquitectura futura
+```bash
+DJANGO_ADMIN_REACT_REF=ccr-16241950-g2o8f6 scripts/install-admin-react.sh
+```
+
+## Backend Git
 
 ```text
 React Admin
@@ -125,24 +148,130 @@ Content Repository
       │
 ┌─────┴──────┐
 ▼            ▼
-Filesystem   Git   ← NO implementado todavía
+Filesystem   Git   (app/content/git.py)
+             └── feincms3_filecontent.repository (git CLI, estados, conflictos, lock)
 ```
 
-`GitArticleRepository` (o un `FilesystemArticleRepository` envuelto en un
-working tree Git) añadiría `clone`, `pull/fetch`, `branch`, `commit`,
-`history`, `diff`, `merge` y `push`. El contrato ya lo prepara:
+`GitArticleRepository` extiende el backend filesystem; las lecturas son
+idénticas y **Git nunca corre en lectura**. Cada `create`/`update`/`delete`
+(y `restore`) es exactamente un commit:
 
-* `ContentRepository.history/diff/commit` existen y hoy lanzan
-  `OperationNotSupported`; `capabilities` anuncia qué soporta cada backend.
-* Toda escritura recibe un `ChangeContext` (autor, mensaje) que hoy se ignora
-  y mañana será el autor y el mensaje del commit.
-* `version` es un hash de contenido: un backend Git puede mantener la misma
-  semántica de bloqueo optimista.
-* Las identidades son rutas estables, legibles y sin IDs de base de datos:
-  diffs y merges de Git se entienden sin el ORM.
-* `packages/feincms3-filecontent` ya contiene una capa Git explícita
-  (estados, sync incremental, rollback no destructivo) que puede convertirse
-  en ese backend.
+* autor = el usuario de Django (`ChangeContext`), committer = identidad del
+  sistema (`GIT.COMMITTER_NAME/EMAIL`); mensaje generado o el del contexto;
+* sólo se commitean las rutas tocadas; mover es un único commit con rename;
+* si algo falla antes del commit, archivos e índice de Git vuelven a su
+  estado previo;
+* un cambio sin confirmar hecho a mano en esa ruta bloquea la escritura
+  (`409` con `paths`), nunca se mezcla en silencio; `commit()` permite
+  confirmarlo de forma explícita;
+* con `AUTO_PUSH` se hace push tras cada commit. Si el push es rechazado, el
+  commit queda local (estado `AHEAD`/`DIVERGED`) y la respuesta lo dice
+  (`commit.push_error`);
+* `sync()` hace fetch + fast-forward + push. Si las historias divergen lanza
+  `DivergedError` con las rutas tocadas en ambos lados y no cambia nada:
+  reconciliar es una decisión humana;
+* `history()`, `diff()` y `restore()` trabajan por artículo; `restore()` crea
+  un commit nuevo (también recrea artículos borrados). Nunca se reescribe la
+  historia.
+
+Configuración:
+
+```python
+CONTENT_REPOSITORY = {
+    "BACKEND": "git",
+    "ROOT": "/srv/content",  # raíz de SU PROPIO working tree Git
+    "MARKETS": {"CA": ["en", "fr"], "US": ["en", "es"]},
+    "GIT": {"BRANCH": "main", "AUTO_PUSH": True},
+}
+```
+
+`ROOT` debe ser la raíz de un working tree propio: si es un subdirectorio de
+otro repositorio (por ejemplo `content/` dentro de este proyecto) las
+escrituras se rechazan con un error explícito. Por eso el ejemplo usa
+`filesystem` por defecto. Para probar Git:
+
+```bash
+git init --bare -b main /tmp/content.git
+git clone /tmp/content.git /tmp/content
+cp -r content/. /tmp/content/ && git -C /tmp/content add -A \
+  && git -C /tmp/content commit -m "Import articles" && git -C /tmp/content push origin main
+CONTENT_REPOSITORY_BACKEND=git CONTENT_REPOSITORY_ROOT=/tmp/content ./manage.py runserver
+```
+
+El editor muestra entonces el estado del repositorio (rama, `clean`/`ahead`/…),
+el historial con diffs, "Restore" por versión y "Sync with remote".
+
+## Índice (proyección reconstruible)
+
+```text
+archivos (fuente de verdad) ──sync──▶ ArticleIndex (ORM, app/content/models.py)
+                                          │
+IndexedArticleRepository.list()/count() ◀─┘     get()/escrituras ──▶ backend (archivos)
+```
+
+`get_article_repository()` envuelve el backend en `IndexedArticleRepository`
+(`app/content/index.py`) salvo que `CONTENT_REPOSITORY["INDEX"]` sea `False`.
+
+* **`list()` / `count()`** consultan `ArticleIndex`: filtros por market,
+  locale, categoría y estado, "publicado ahora", orden por fecha y paginación
+  (`limit`/`offset`) en SQL, sin leer archivos (2 consultas). Devuelven
+  `ArticleSummary` (sin `body`).
+* **`get()`** sigue leyendo el archivo: el cuerpo nunca sale del índice.
+* **Escrituras** (create/update/delete/move/restore/commit) actualizan las
+  filas afectadas dentro del lock de escritura, releyendo el archivo escrito.
+  En modo Git, si no había nada pendiente, `last_indexed_sha` avanza al nuevo
+  commit y el índice sigue `current`.
+* **Sincronización incremental**:
+  * Git: archivos cambiados entre `last_indexed_sha` y `HEAD` (añadidos,
+    modificados, borrados, renombrados), con el planificador de
+    `feincms3_filecontent.sync`. Si el commit previo ya no existe (historia
+    reescrita) o cambió el root: rebuild completo.
+  * Filesystem: compara `mtime`/tamaño guardados y sólo reprocesa lo que
+    cambió.
+* **Cuándo se sincroniza**: escrituras por el repositorio (inmediato),
+  `POST /api/content/repository/sync/` (botón *Sync with remote* / *Reindex*
+  del editor), `./manage.py content_index [--rebuild|--status]`, y el primer
+  listado con el índice vacío. Los cambios hechos por fuera (`git pull` a
+  mano, edición directa de archivos) aparecen tras la siguiente sincronización.
+* **Archivos inválidos** se indexan con su error, nunca se listan y se
+  informan en `/api/content/meta/` (`invalid_documents`).
+* **Desechable**: borrar `ArticleIndex` e `IndexState` y volver a listar
+  produce el mismo resultado. Es dato operacional, no contenido (por eso sí
+  tiene migración: `content.0001_initial`).
+
+No se reutilizó la tabla `ContentIndex` del paquete: no distingue entre
+roots de contenido y guarda los campos en JSON. Un índice tipado por tipo de
+contenido permite filtrar y ordenar con índices de base de datos. El *patrón*
+(proyección + estado + sync incremental por diff) sí es el del paquete.
+
+## Primer arranque y estado
+
+```bash
+export CONTENT_REPOSITORY_BACKEND=git
+export CONTENT_REPOSITORY_ROOT=/srv/content
+export CONTENT_REPOSITORY_REMOTE_URL=git@github.com:org/content.git
+
+./manage.py content_clone            # clona en ROOT y construye el índice
+./manage.py content_status           # estado legible
+./manage.py content_status --fetch --check   # para monitorización: exit 1 si algo requiere atención
+./manage.py content_status --json    # salida para máquinas
+```
+
+* `content_clone` es idempotente: si `ROOT` ya es un clon del mismo remoto no
+  hace nada; si es un clon de *otro* remoto, o un directorio no vacío que no es
+  un working tree, se niega (nunca sobrescribe contenido). Avisa si la URL lleva
+  credenciales y nunca las imprime.
+* `content_status` muestra backend, remoto (sin credenciales), estado
+  (`CLEAN/DIRTY/AHEAD/BEHIND/DIVERGED/CONFLICTED`), rama, HEAD, ahead/behind,
+  archivos modificados/sin seguimiento/en conflicto, problemas y el estado del
+  índice (`current`/`stale`/`missing`). `--check` falla si el repositorio no
+  está limpio o el índice no está al día.
+
+### Pendiente (siguientes pasos de la opción 3)
+
+* **Ramas de revisión / pull requests** para artículos (el paquete ya tiene
+  worktrees y proveedores GitHub/GitLab/Bitbucket).
+* Retirar `FileContent` cuando `Page` pase al ComponentRegistry.
 
 ## ORM vs filesystem (lo que demuestra el POC)
 
@@ -153,7 +282,7 @@ working tree Git) añadiría `clone`, `pull/fetch`, `branch`, `commit`,
 | Migraciones al cambiar el schema | Sí | No (schema en código; documentos validados al leer) |
 | Market / locale | No modelado | Parte de la identidad (ruta) |
 | Diff / revisión legible | No | Sí (texto plano; Git después) |
-| Consultas complejas, joins, paginación de BD | Sí | Lineal sobre archivos; requiere índice para escalar |
+| Consultas, orden, paginación | Sí | Sí, vía `ArticleIndex` (proyección reconstruible) |
 | Imágenes (`Image` inline) | Sí | No (pendiente: referencias de media) |
 | URLs vía feincms3 apps (`reverse_app`) | Sí | Rutas propias `/content/{market}/{locale}/articles/` |
 | Edición concurrente | Último que guarda gana | 409 por versión |
@@ -218,7 +347,9 @@ Esto **no** se ha refactorizado: `PagePlugin`, `RichText`, `Image` y
 # Editor:  http://127.0.0.1:8000/admin-react/content/articles/   (login staff)
 # Público: http://127.0.0.1:8000/content/ca/en/articles/
 ./manage.py test app.content
+./manage.py content_index --status   # estado del índice; --rebuild para regenerarlo
 ```
 
 Para no tocar `content/` del repositorio al experimentar, usa
-`CONTENT_REPOSITORY_ROOT=/tmp/content ./manage.py runserver` con una copia.
+`CONTENT_REPOSITORY_ROOT=/tmp/content ./manage.py runserver` con una copia
+(y `CONTENT_REPOSITORY_BACKEND=git` si esa copia es un working tree Git).

@@ -4,6 +4,7 @@ Shared Django settings for the feincms3 example project.
 Environment-specific values live in ``development`` / ``production``.
 """
 
+import importlib.util
 import os
 
 from django.utils.translation import gettext_lazy as _
@@ -36,6 +37,7 @@ INSTALLED_APPS = [
     "app",
     "app.pages",
     "app.articles",
+    "app.content",
 ]
 
 MIDDLEWARE = MIDDLEWARE_CLASSES = [
@@ -130,12 +132,43 @@ FILECONTENT = {
 # Filesystem-first article repository (POC, see docs/content-repository.md).
 # Articles live in content/{MARKET}/{locale}/articles/{slug}.md; the ORM is
 # not involved. Only the markets/locales listed here are read or written.
+# Set CONTENT_REPOSITORY_BACKEND=git with a ROOT that is its own Git working
+# tree to get one commit per edit, history and restore.
 CONTENT_REPOSITORY = {
+    "BACKEND": os.environ.get("CONTENT_REPOSITORY_BACKEND", "filesystem"),
     "ROOT": os.environ.get(
         "CONTENT_REPOSITORY_ROOT", os.path.join(BASE_DIR, "content")
     ),
+    "GIT": {
+        "BRANCH": os.environ.get("CONTENT_REPOSITORY_BRANCH", "main"),
+        # ./manage.py content_clone clones this into ROOT on first run.
+        "REMOTE_URL": os.environ.get("CONTENT_REPOSITORY_REMOTE_URL"),
+        "AUTO_PUSH": os.environ.get("CONTENT_REPOSITORY_AUTO_PUSH", "1") == "1",
+    },
     "MARKETS": {
         "CA": ["en", "fr"],
         "US": ["en", "es"],
     },
 }
+
+# The filesystem articles editor (app/static/content/article-editor.js) is
+# hosted natively inside the React admin when the installed
+# django-admin-react supports CUSTOM_PAGES; otherwise app/urls.py serves it
+# as a standalone page at the same URL.
+# Detect support without importing the package: importing
+# django_admin_react.conf while settings are still loading would cache its
+# settings before this block runs.
+CONTENT_EDITOR_IN_SPA = (
+    importlib.util.find_spec("django_admin_react") is not None
+    and importlib.util.find_spec("django_admin_react.custom_pages") is not None
+)
+if CONTENT_EDITOR_IN_SPA:
+    DJANGO_ADMIN_REACT["CUSTOM_PAGES"] = [
+        {
+            "path": "content/articles",
+            "label": "Articles (files)",
+            "group": "Content",
+            "module": "content/article-editor.js",
+            "permission": "articles.view_article",
+        }
+    ]

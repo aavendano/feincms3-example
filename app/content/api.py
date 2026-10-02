@@ -7,11 +7,19 @@ auth). Authorization reuses the existing ``articles`` permissions
 migration — are needed for the proof of concept.
 
     GET    /api/content/meta/
-    GET    /api/content/articles/?market=CA&locale=en&category=blog&status=draft
+    GET    /api/content/articles/?market=CA&locale=en&category=blog&status=draft&limit=20&offset=0
     POST   /api/content/articles/
     GET    /api/content/articles/<MARKET>/<locale>/<slug>/
     PUT    /api/content/articles/<MARKET>/<locale>/<slug>/   (body may move it)
     DELETE /api/content/articles/<MARKET>/<locale>/<slug>/   (If-Match: <version>)
+
+Versioned backends (``"history" in capabilities``) add:
+
+    GET    /api/content/articles/<MARKET>/<locale>/<slug>/history/
+    GET    /api/content/articles/<MARKET>/<locale>/<slug>/diff/?version=<sha>[&to=<sha>]
+    POST   /api/content/articles/<MARKET>/<locale>/<slug>/restore/  {"version": sha}
+    GET    /api/content/repository/            backend state (AHEAD, DIVERGED, …)
+    POST   /api/content/repository/sync/       fetch + fast-forward + push, never merges
 
 The browser only ever sees article ids (``CA/en/example``), never paths.
 """
@@ -22,12 +30,15 @@ import json
 from django.http import JsonResponse
 from django.urls import NoReverseMatch, reverse
 from django.views.decorators.http import require_http_methods
+from feincms3_filecontent.exceptions import ConflictError, RepositoryError
+from feincms3_filecontent.repository.git import redact
 
 from . import get_article_repository, schemas
 from .exceptions import (
     DocumentAlreadyExists,
     DocumentNotFound,
     InvalidDocument,
+    OperationNotSupported,
     VersionConflict,
 )
 from .repository import ORDER_OLDEST_FIRST, ArticleFilter, ChangeContext
@@ -45,8 +56,13 @@ def error(status, message, **extra):
     return JsonResponse({"error": message, **extra}, status=status)
 
 
-def staff_api(view):
-    """Session auth + staff + per-method permission, answered as JSON."""
+def staff_api(view=None, *, permission=None):
+    """
+    Session auth + staff + permission (per HTTP method unless ``permission``
+    is given), with content and repository errors answered as JSON.
+    """
+    if view is None:
+        return functools.partial(staff_api, permission=permission)
 
     @functools.wraps(view)
     def wrapper(request, *args, **kwargs):
@@ -55,9 +71,9 @@ def staff_api(view):
             return error(401, "Authentication required.")
         if not user.is_staff:
             return error(403, "Staff access required.")
-        permission = PERMISSIONS.get(request.method)
-        if permission and not user.has_perm(permission):
-            return error(403, f"Missing permission {permission}.")
+        required = permission or PERMISSIONS.get(request.method)
+        if required and not user.has_perm(required):
+            return error(403, f"Missing permission {required}.")
         try:
             return view(request, *args, **kwargs)
         except InvalidDocument as exc:
@@ -74,6 +90,16 @@ def staff_api(view):
                 "The article was changed by someone else; reload it.",
                 current_version=exc.current_version,
             )
+        except OperationNotSupported as exc:
+            return error(501, str(exc))
+        except ConflictError as exc:
+            # Dirty tree, divergence, unfinished merge, rejected push: never
+            # resolved automatically; the paths tell a human where to look.
+            return error(
+                409, f"Repository conflict: {redact(str(exc))}", paths=exc.paths
+            )
+        except RepositoryError as exc:
+            return error(503, f"Content repository unavailable: {redact(str(exc))}")
 
     return wrapper
 
@@ -106,13 +132,43 @@ def to_json(article, *, repository, with_body=True):
         "publication_date": schemas._format_datetime(article.publication_date),
         "category": article.category,
         "version": article.version,
-        "source": "filesystem",
+        "source": repository.backend,
         "location": repository.describe_location(article.key),
         "public_url": public_url(article),
     }
     if with_body:
         data["body"] = article.body
     return data
+
+
+def commit_payload(repository):
+    """The commit a versioned backend made for this request's write, if any."""
+    commit = getattr(repository, "last_commit", lambda: None)()
+    return {"commit": commit.as_dict()} if commit is not None else {}
+
+
+def written(article, repository, status=200):
+    return JsonResponse(
+        {**to_json(article, repository=repository), **commit_payload(repository)},
+        status=status,
+    )
+
+
+MAX_PAGE_SIZE = 200
+
+
+def _int_param(params, name, default, *, maximum=None):
+    raw = params.get(name)
+    if raw in (None, ""):
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise InvalidDocument({name: ["Must be an integer."]}) from None
+    if value < 0 or (maximum is not None and value > maximum):
+        limit = f" and at most {maximum}" if maximum is not None else ""
+        raise InvalidDocument({name: [f"Must be at least 0{limit}."]})
+    return value
 
 
 def read_json(request):
@@ -161,7 +217,7 @@ def meta(request):
     repository = get_article_repository()
     return JsonResponse(
         {
-            "source": "filesystem",
+            "source": repository.backend,
             "root": repository.root.name,
             "markets": {m: list(locs) for m, locs in repository.markets.items()},
             "categories": list(schemas.CATEGORIES),
@@ -180,26 +236,29 @@ def article_collection(request):
         article = repository.create(
             article_from(read_json(request), repository), context=context_for(request)
         )
-        return JsonResponse(to_json(article, repository=repository), status=201)
+        return written(article, repository, status=201)
 
     params = request.GET
     status = params.get("status") or None
     if status and status not in schemas.STATUSES:
         raise InvalidDocument({"status": ["Unknown status."]})
-    articles = repository.list(
-        ArticleFilter(
-            market=params.get("market") or None,
-            locale=params.get("locale") or None,
-            category=params.get("category") or None,
-            status=status,
-            order=ORDER_OLDEST_FIRST
-            if params.get("order") == "publication_date"
-            else "-publication_date",
-        )
+    query = ArticleFilter(
+        market=params.get("market") or None,
+        locale=params.get("locale") or None,
+        category=params.get("category") or None,
+        status=status,
+        order=ORDER_OLDEST_FIRST
+        if params.get("order") == "publication_date"
+        else "-publication_date",
+        limit=_int_param(params, "limit", None, maximum=MAX_PAGE_SIZE),
+        offset=_int_param(params, "offset", 0),
     )
+    articles = repository.list(query)
     return JsonResponse(
         {
-            "count": len(articles),
+            "count": repository.count(query),
+            "limit": query.limit,
+            "offset": query.offset,
             "results": [
                 to_json(a, repository=repository, with_body=False) for a in articles
             ],
@@ -217,7 +276,7 @@ def article_detail(request, market, locale, slug):
     if request.method == "DELETE":
         version = request.headers.get("If-Match") or request.GET.get("version")
         repository.delete(key, expected_version=version, context=context_for(request))
-        return JsonResponse({"deleted": key.id})
+        return JsonResponse({"deleted": key.id, **commit_payload(repository)})
 
     data = read_json(request)
     # Location fields default to the current ones; changing them is a move.
@@ -228,4 +287,53 @@ def article_detail(request, market, locale, slug):
         expected_version=data.get("version"),
         context=context_for(request),
     )
-    return JsonResponse(to_json(article, repository=repository))
+    return written(article, repository)
+
+
+@require_http_methods(["GET"])
+@staff_api
+def article_history(request, market, locale, slug):
+    repository = get_article_repository()
+    key = schemas.ArticleKey(market, locale, slug)
+    return JsonResponse({"id": key.id, "entries": repository.history(key)})
+
+
+@require_http_methods(["GET"])
+@staff_api
+def article_diff(request, market, locale, slug):
+    repository = get_article_repository()
+    key = schemas.ArticleKey(market, locale, slug)
+    version = request.GET.get("version", "")
+    diff = repository.diff(key, version, request.GET.get("to") or None)
+    return JsonResponse({"id": key.id, "version": version, "diff": diff})
+
+
+@require_http_methods(["POST"])
+@staff_api(permission="articles.change_article")
+def article_restore(request, market, locale, slug):
+    repository = get_article_repository()
+    key = schemas.ArticleKey(market, locale, slug)
+    data = read_json(request)
+    article = repository.restore(
+        key,
+        str(data.get("version", "")),
+        expected_version=data.get("expected_version"),
+        context=context_for(request),
+    )
+    return written(article, repository)
+
+
+@require_http_methods(["GET"])
+@staff_api
+def repository_status(request):
+    return JsonResponse(get_article_repository().status())
+
+
+@require_http_methods(["POST"])
+@staff_api(permission="articles.change_article")
+def repository_sync(request):
+    """Git: fetch/fast-forward/push. Indexed repositories: then reindex."""
+    repository = get_article_repository()
+    if not hasattr(repository, "sync"):
+        raise OperationNotSupported("sync requires a Git backend or the index")
+    return JsonResponse(repository.sync())

@@ -50,12 +50,23 @@ The content working tree (`filecontent/`) and `filecontent.worktrees/` are git-i
 
 `app/content/` is a content repository for articles stored as Markdown in
 `content/{MARKET}/{locale}/articles/*.md` (settings: `CONTENT_REPOSITORY`).
-The ORM `Article` model is untouched and independent. Design, API and
+The ORM `Article` model is untouched and independent. Backends:
+`filesystem` (default) and `git` (`app/content/git.py`, built on
+`feincms3_filecontent.repository`; one commit per change). Listings come
+from a rebuildable ORM index (`ArticleIndex`, `./manage.py content_index
+[--rebuild]`); bodies are always read from the files. Git backend first run:
+`./manage.py content_clone`; health: `./manage.py content_status [--fetch]
+[--check] [--json]`. Design, API and
 limitations: `docs/content-repository.md`. Tests use temporary directories:
 
 ```
 ./manage.py test app.content
 ```
+
+The editor UI is `app/static/content/article-editor.js` (`mount(element,
+context)`): mounted natively in `/admin-react/` through django-admin-react's
+`CUSTOM_PAGES` when the installed fork supports it, otherwise served by
+`app/content/editor.py` at the same URL.
 
 Never point tests or experiments at the real `content/`; set
 `CONTENT_REPOSITORY_ROOT` to a copy.

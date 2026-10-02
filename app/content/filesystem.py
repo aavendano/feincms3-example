@@ -10,6 +10,7 @@ delegated to the primitives of ``feincms3_filecontent`` so this module only
 deals with article semantics.
 """
 
+from dataclasses import replace
 from pathlib import Path
 
 from django.utils import timezone
@@ -37,6 +38,8 @@ LOCK_NAME = ".content.lock"
 
 
 class FilesystemArticleRepository(ContentRepository):
+    backend = "filesystem"
+
     def __init__(self, root, *, markets, lock_timeout=10):
         """
         ``markets`` maps market codes to their enabled locales, e.g.
@@ -82,6 +85,35 @@ class FilesystemArticleRepository(ContentRepository):
     def exists(self, key):
         return self.store.exists(self._path(key))
 
+    def article_keys(self, market=None, locale=None):
+        """Keys of every article file (valid or not), without reading them."""
+        return self._keys(market, locale)
+
+    def key_for_path(self, path):
+        """
+        Inverse of the path layout: ``"CA/en/articles/x.md"`` -> key, or
+        ``None`` for anything that is not an article of a configured market.
+        """
+        parts = path.split("/")
+        if len(parts) != 4 or parts[2] != ARTICLES_DIR or not parts[3].endswith(SUFFIX):
+            return None
+        key = schemas.ArticleKey(parts[0], parts[1], parts[3][: -len(SUFFIX)])
+        try:
+            key.validate(markets=self.markets)
+        except InvalidDocument:
+            return None
+        return key
+
+    def path_for(self, key):
+        """Path relative to the root (for indexes and Git; never sent to browsers)."""
+        return self._path(key)
+
+    def stat(self, key):
+        try:
+            return self.store.stat(self._path(key))
+        except StoreNotFound:
+            raise DocumentNotFound(key.id) from None
+
     def _keys(self, market=None, locale=None):
         for mkt, locales in sorted(self.markets.items()):
             if market and mkt != market:
@@ -123,7 +155,12 @@ class FilesystemArticleRepository(ContentRepository):
             key=lambda a: a.publication_date,
             reverse=query.order != ORDER_OLDEST_FIRST,
         )
-        return articles
+        end = None if query.limit is None else query.offset + query.limit
+        return articles[query.offset : end]
+
+    def count(self, query=None):
+        query = query or ArticleFilter()
+        return len(self.list(replace(query, limit=None, offset=0)))
 
     def invalid_documents(self):
         """``{article id: errors}`` for files that cannot be parsed."""

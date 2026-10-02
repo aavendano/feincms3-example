@@ -1,6 +1,8 @@
 import json
 
+from django.conf import settings
 from django.contrib.auth.models import Permission, User
+from django.contrib.staticfiles import finders
 from django.test import TestCase
 
 from app.content import schemas
@@ -12,6 +14,8 @@ API = "/api/content/"
 
 
 class APITests(TempContentMixin, TestCase):
+    index = True
+
     def setUp(self):
         super().setUp()
         self.admin = User.objects.create_superuser("admin", "a@example.com", "pw")
@@ -131,6 +135,8 @@ class APITests(TempContentMixin, TestCase):
 
 
 class PublicViewTests(TempContentMixin, TestCase):
+    index = True
+
     def test_published_article_renders_from_markdown(self):
         self.repo.create(make_article(body="# Heading\n\n*emphasis*"))
         response = self.client.get("/content/ca/en/articles/hello/")
@@ -163,15 +169,32 @@ class PublicViewTests(TempContentMixin, TestCase):
 
     def test_editor_page_requires_staff_and_is_inside_admin_react(self):
         url = "/admin-react/content/articles/"
-        self.assertEqual(self.client.get(url).status_code, 302)
-        self.client.force_login(User.objects.create_superuser("a", "a@e.com", "pw"))
-        response = self.client.get(url)
-        self.assertContains(response, "Filesystem repository")
-        # The SPA itself still answers next to it.
+        editor = "/static/content/article-editor.js"
+        superuser = User.objects.create_superuser("a", "a@e.com", "pw")
+        if settings.CONTENT_EDITOR_IN_SPA:
+            # Native SPA route: the shell embeds the page only for users
+            # who may view articles; the module itself is a static file.
+            self.assertNotIn(editor, self.client.get(url).content.decode())
+            staff = User.objects.create_user("s", password="pw", is_staff=True)
+            self.client.force_login(staff)
+            self.assertNotIn(editor, self.client.get(url).content.decode())
+            self.client.force_login(superuser)
+            body = self.client.get(url).content.decode()
+            self.assertIn('id="dar-custom-pages"', body)
+            self.assertIn(editor, body)
+        else:
+            self.assertEqual(self.client.get(url).status_code, 302)
+            self.client.force_login(superuser)
+            self.assertContains(self.client.get(url), editor)
         self.assertEqual(self.client.get("/admin-react/").status_code, 200)
+
+    def test_editor_module_is_a_static_file(self):
+        self.assertTrue(finders.find("content/article-editor.js"))
 
 
 class RenderingTests(TempContentMixin, TestCase):
+    index = True
+
     def test_region_renderer_renders_non_orm_component(self):
         from app.content.rendering import (  # noqa: PLC0415
             MarkdownBlock,

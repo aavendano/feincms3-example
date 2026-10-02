@@ -30,6 +30,23 @@ api_patterns = (
             api.article_detail,
             name="article",
         ),
+        path(
+            f"articles/<str:market>/<str:locale>/{SLUG}/history/",
+            api.article_history,
+            name="article-history",
+        ),
+        path(
+            f"articles/<str:market>/<str:locale>/{SLUG}/diff/",
+            api.article_diff,
+            name="article-diff",
+        ),
+        path(
+            f"articles/<str:market>/<str:locale>/{SLUG}/restore/",
+            api.article_restore,
+            name="article-restore",
+        ),
+        path("repository/", api.repository_status, name="repository"),
+        path("repository/sync/", api.repository_sync, name="repository-sync"),
     ],
     "content-api",
 )
