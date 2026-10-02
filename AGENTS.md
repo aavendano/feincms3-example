@@ -54,7 +54,9 @@ The ORM `Article` model is untouched and independent. Backends:
 `filesystem` (default) and `git` (`app/content/git.py`, built on
 `feincms3_filecontent.repository`; one commit per change). Listings come
 from a rebuildable ORM index (`ArticleIndex`, `./manage.py content_index
-[--rebuild]`); bodies are always read from the files. Design, API and
+[--rebuild]`); bodies are always read from the files. Git backend first run:
+`./manage.py content_clone`; health: `./manage.py content_status [--fetch]
+[--check] [--json]`. Design, API and
 limitations: `docs/content-repository.md`. Tests use temporary directories:
 
 ```

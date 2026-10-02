@@ -238,11 +238,33 @@ roots de contenido y guarda los campos en JSON. Un índice tipado por tipo de
 contenido permite filtrar y ordenar con índices de base de datos. El *patrón*
 (proyección + estado + sync incremental por diff) sí es el del paquete.
 
+## Primer arranque y estado
+
+```bash
+export CONTENT_REPOSITORY_BACKEND=git
+export CONTENT_REPOSITORY_ROOT=/srv/content
+export CONTENT_REPOSITORY_REMOTE_URL=git@github.com:org/content.git
+
+./manage.py content_clone            # clona en ROOT y construye el índice
+./manage.py content_status           # estado legible
+./manage.py content_status --fetch --check   # para monitorización: exit 1 si algo requiere atención
+./manage.py content_status --json    # salida para máquinas
+```
+
+* `content_clone` es idempotente: si `ROOT` ya es un clon del mismo remoto no
+  hace nada; si es un clon de *otro* remoto, o un directorio no vacío que no es
+  un working tree, se niega (nunca sobrescribe contenido). Avisa si la URL lleva
+  credenciales y nunca las imprime.
+* `content_status` muestra backend, remoto (sin credenciales), estado
+  (`CLEAN/DIRTY/AHEAD/BEHIND/DIVERGED/CONFLICTED`), rama, HEAD, ahead/behind,
+  archivos modificados/sin seguimiento/en conflicto, problemas y el estado del
+  índice (`current`/`stale`/`missing`). `--check` falla si el repositorio no
+  está limpio o el índice no está al día.
+
 ### Pendiente (siguientes pasos de la opción 3)
 
 * **Ramas de revisión / pull requests** para artículos (el paquete ya tiene
   worktrees y proveedores GitHub/GitLab/Bitbucket).
-* **Clonado inicial** desde un remoto y comando de estado para artículos.
 * **Ruta nativa en la SPA** para el editor (requiere push al fork).
 * Retirar `FileContent` cuando `Page` pase al ComponentRegistry.
 

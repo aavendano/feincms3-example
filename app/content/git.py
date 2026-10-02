@@ -28,9 +28,14 @@ from feincms3_filecontent.exceptions import (
     DocumentNotFound as GitDocumentNotFound,
     GitCommandError,
     PushRejected,
+    RepositoryError,
 )
 from feincms3_filecontent.repository.conflicts import describe, ensure_can_write
-from feincms3_filecontent.repository.git import GitRepository, redact
+from feincms3_filecontent.repository.git import (
+    GitRepository,
+    has_credentials,
+    redact,
+)
 
 from . import schemas
 from .exceptions import DocumentNotFound
@@ -64,12 +69,14 @@ class GitArticleRepository(FilesystemArticleRepository):
         markets,
         branch="main",
         remote_name="origin",
+        remote_url=None,
         auto_push=True,
         committer=("feincms3 content", "content@localhost"),
         lock_timeout=10,
     ):
         super().__init__(root, markets=markets, lock_timeout=lock_timeout)
         self.auto_push = auto_push
+        self.remote_url = remote_url
         self.git = GitRepository(
             self.root,
             remote_name=remote_name,
@@ -249,13 +256,64 @@ class GitArticleRepository(FilesystemArticleRepository):
 
     # Repository state -------------------------------------------------------
 
+    # First run ----------------------------------------------------------------
+
+    def clone(self, remote_url=None):
+        """
+        Materialize the working tree from ``remote_url`` (default: the
+        configured one). Returns ``True`` if it cloned, ``False`` if ROOT
+        already is a working tree of this repository. Refuses to touch a
+        non-empty directory that is not one: content is never overwritten.
+        """
+        url = remote_url or self.remote_url
+        if self.git.exists():
+            current = self.git.remote_url()
+            if url and current and current != url:
+                raise RepositoryError(
+                    f"{self.root} is a clone of {redact(current)}, not {redact(url)}."
+                )
+            return False
+        if not url:
+            raise RepositoryError(
+                'No remote configured (CONTENT_REPOSITORY["GIT"]["REMOTE_URL"]).'
+            )
+        if self.root.exists() and any(self.root.iterdir()):
+            raise RepositoryError(
+                f"{self.root} is not empty and not a Git working tree; "
+                "refusing to clone over it."
+            )
+        GitRepository.clone(
+            url,
+            self.root,
+            branch=self.git.branch,
+            remote_name=self.git.remote_name,
+        )
+        self._lock = None
+        return True
+
     def status(self):
         data = super().status()
+        data["remote"] = redact(self.remote_url or "")
+        if self.remote_url and has_credentials(self.remote_url):
+            data.setdefault("warnings", []).append(
+                "The remote URL embeds credentials; use SSH keys or a credential helper."
+            )
         if not self.git.exists():
-            return {**data, "ok": False, "problems": ["Not a Git working tree."]}
+            return {
+                **data,
+                "ok": False,
+                "cloned": False,
+                "problems": ["Not a Git working tree (run ./manage.py content_clone)."],
+            }
         report = self.git.status()
+        if self.git.remote_url():
+            data["remote"] = redact(self.git.remote_url())
         return {
             **data,
+            "cloned": True,
+            "modified": report.modified,
+            "untracked": report.untracked,
+            "conflicted": report.conflicted,
             "ok": report.state.value == "clean",
             "state": report.state.value,
             "branch": report.branch,
@@ -265,6 +323,11 @@ class GitArticleRepository(FilesystemArticleRepository):
             "behind": report.behind,
             "problems": describe(report),
         }
+
+    def fetch(self):
+        """Update remote-tracking refs (for an accurate ahead/behind)."""
+        if self.git.exists() and self.git.remote_url():
+            self.git.fetch()
 
     def sync(self):
         """

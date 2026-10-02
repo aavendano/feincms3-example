@@ -140,6 +140,8 @@ CONTENT_REPOSITORY = {
     ),
     "GIT": {
         "BRANCH": os.environ.get("CONTENT_REPOSITORY_BRANCH", "main"),
+        # ./manage.py content_clone clones this into ROOT on first run.
+        "REMOTE_URL": os.environ.get("CONTENT_REPOSITORY_REMOTE_URL"),
         "AUTO_PUSH": os.environ.get("CONTENT_REPOSITORY_AUTO_PUSH", "1") == "1",
     },
     "MARKETS": {

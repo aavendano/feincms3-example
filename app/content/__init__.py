@@ -28,7 +28,7 @@ def get_article_repository():
             "BACKEND": "filesystem",   # or "git": one commit per change
             "ROOT": ...,               # for "git": root of its own working tree
             "MARKETS": {"CA": ["en", "fr"]},
-            "GIT": {"BRANCH": "main", "AUTO_PUSH": True},
+            "GIT": {"BRANCH": "main", "AUTO_PUSH": True, "REMOTE_URL": None},
             "INDEX": True,             # list/count from the ORM index (default)
         }
     """
@@ -55,6 +55,7 @@ def _backend(conf):
             markets=conf["MARKETS"],
             branch=git.get("BRANCH", "main"),
             remote_name=git.get("REMOTE_NAME", "origin"),
+            remote_url=git.get("REMOTE_URL") or None,
             auto_push=git.get("AUTO_PUSH", True),
             committer=(
                 git.get("COMMITTER_NAME", "feincms3 content"),
