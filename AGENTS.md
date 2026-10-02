@@ -63,6 +63,11 @@ limitations: `docs/content-repository.md`. Tests use temporary directories:
 ./manage.py test app.content
 ```
 
+The editor UI is `app/static/content/article-editor.js` (`mount(element,
+context)`): mounted natively in `/admin-react/` through django-admin-react's
+`CUSTOM_PAGES` when the installed fork supports it, otherwise served by
+`app/content/editor.py` at the same URL.
+
 Never point tests or experiments at the real `content/`; set
 `CONTENT_REPOSITORY_ROOT` to a copy.
 

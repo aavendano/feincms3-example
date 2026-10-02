@@ -14,7 +14,7 @@ paquete queda sólo como puente mientras `Page` siga en el ORM.
 ## Arquitectura actual
 
 ```text
-React Admin  (/admin-react/content/articles/)
+React Admin  (/admin-react/content/articles/, ruta nativa vía CUSTOM_PAGES)
      │  fetch + cookie de sesión + X-CSRFToken
      ▼
 Django API   (/api/content/…)              app/content/api.py
@@ -110,24 +110,30 @@ Errores: `400 {"errors": {campo: [...]}}`, `401`, `403`, `404`, `409`
 Se reutilizan los permisos del modelo `Article` para no crear filas de
 permisos (que exigirían una migración).
 
-### ¿Por qué el editor no es una ruta nativa de la SPA?
+### El editor dentro de la SPA (`CUSTOM_PAGES`)
 
 django-admin-react pinta lo que expone la REST API a partir de los
-`ModelAdmin`. No tiene un punto de extensión para recursos que no son
-modelos: su único hook, las *custom views* de `get_urls()`, enlaza a la
-página legacy en otra pestaña. Las alternativas eran:
+`ModelAdmin`; no tenía punto de extensión para recursos que no son modelos.
+El fork (`aavendano/django-admin-react`, rama `ccr-16241950-g2o8f6`) añade
+uno **genérico**: `DJANGO_ADMIN_REACT["CUSTOM_PAGES"]`. Cada entrada es un
+enlace en el sidebar + una ruta del cliente cuyo contenido es un módulo ES
+del proyecto (`mount(element, context)`). El paquete no aprende nada de
+artículos: no añade endpoints ni permisos, sólo hospeda el módulo.
 
-1. Un modelo falso o *proxy* para colgarse del registry → genera migraciones
-   y obliga a emular un QuerySet. Descartado.
-2. Una ruta nueva dentro del fork de la SPA → cambio en otro repositorio,
-   con su build. Es el siguiente paso natural (ver más abajo).
-3. **Elegida para el POC:** una página servida bajo `/admin-react/content/articles/`
-   (antes del catch-all de la SPA). Comparte sesión, cookie CSRF y login
-   staff, y sólo habla con `/api/content/`. Es JavaScript sin dependencias ni
-   build.
+* El editor vive en `app/static/content/article-editor.js` (un único
+  código; estilos y markup acotados bajo `.fse`).
+* `app/settings/base.py` lo registra en `CUSTOM_PAGES` (grupo *Content*,
+  permiso `articles.view_article`) **sólo si** el django-admin-react
+  instalado lo soporta (`find_spec("django_admin_react.custom_pages")`).
+* Si no lo soporta (por ejemplo, `main` del fork antes de fusionar la rama),
+  `app/urls.py` sirve el mismo módulo en una página independiente en la
+  misma URL, `/admin-react/content/articles/`. Ningún modo rompe al otro.
 
-La API ya tiene la forma que necesitaría una ruta nativa de la SPA, así que
-migrar el editor allí no toca el backend.
+Para usar la ruta nativa hasta que la rama del fork se fusione:
+
+```bash
+DJANGO_ADMIN_REACT_REF=ccr-16241950-g2o8f6 scripts/install-admin-react.sh
+```
 
 ## Backend Git
 
@@ -265,7 +271,6 @@ export CONTENT_REPOSITORY_REMOTE_URL=git@github.com:org/content.git
 
 * **Ramas de revisión / pull requests** para artículos (el paquete ya tiene
   worktrees y proveedores GitHub/GitLab/Bitbucket).
-* **Ruta nativa en la SPA** para el editor (requiere push al fork).
 * Retirar `FileContent` cuando `Page` pase al ComponentRegistry.
 
 ## ORM vs filesystem (lo que demuestra el POC)

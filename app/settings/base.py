@@ -4,6 +4,7 @@ Shared Django settings for the feincms3 example project.
 Environment-specific values live in ``development`` / ``production``.
 """
 
+import importlib.util
 import os
 
 from django.utils.translation import gettext_lazy as _
@@ -149,3 +150,25 @@ CONTENT_REPOSITORY = {
         "US": ["en", "es"],
     },
 }
+
+# The filesystem articles editor (app/static/content/article-editor.js) is
+# hosted natively inside the React admin when the installed
+# django-admin-react supports CUSTOM_PAGES; otherwise app/urls.py serves it
+# as a standalone page at the same URL.
+# Detect support without importing the package: importing
+# django_admin_react.conf while settings are still loading would cache its
+# settings before this block runs.
+CONTENT_EDITOR_IN_SPA = (
+    importlib.util.find_spec("django_admin_react") is not None
+    and importlib.util.find_spec("django_admin_react.custom_pages") is not None
+)
+if CONTENT_EDITOR_IN_SPA:
+    DJANGO_ADMIN_REACT["CUSTOM_PAGES"] = [
+        {
+            "path": "content/articles",
+            "label": "Articles (files)",
+            "group": "Content",
+            "module": "content/article-editor.js",
+            "permission": "articles.view_article",
+        }
+    ]
