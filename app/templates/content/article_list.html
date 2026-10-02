@@ -3,14 +3,22 @@
 {% block title %}Articles {{ market }}/{{ locale }} - {{ block.super }}{% endblock %}
 
 {% block content %}
-  <h1>Articles <small>({{ market }} · {{ locale }})</small></h1>
-  <p class="content-source">Served from the filesystem content repository.</p>
-  {% for article in articles %}
-    <a href="{% url 'content:article-detail' market=article.market|lower locale=article.locale slug=article.slug %}" class="article">
-      <h2>{{ article.title }}</h2>
-      {{ article.publication_date|date:"d.m.Y" }} · {{ article.category }}
+<section class="article-listing">
+  <h1 class="page-title">Articles</h1>
+  <p class="content-source">{{ market }} · {{ locale }} · filesystem content repository</p>
+
+  {% if articles %}
+  <div class="article-list">
+    {% for article in articles %}
+    <a href="{% url 'content:article-detail' market=article.market|lower locale=article.locale slug=article.slug %}" class="article-row">
+      <time class="article-row__date" datetime="{{ article.publication_date|date:'Y-m-d' }}">{{ article.publication_date|date:"d.m.Y" }}</time>
+      <h2 class="article-row__title">{{ article.title }}</h2>
+      <span class="article-row__meta">{{ article.category }}</span>
     </a>
-  {% empty %}
-    <p>No published articles.</p>
-  {% endfor %}
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="empty-state">No published articles.</p>
+  {% endif %}
+</section>
 {% endblock %}

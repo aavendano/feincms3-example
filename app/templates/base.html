@@ -1,118 +1,77 @@
 <!DOCTYPE html>
-{% load i18n menus %}
+{% load i18n menus static %}
 <html lang="{{ request.LANGUAGE_CODE }}">
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}feincms3{% endblock %}</title>
-  <style>
-
-*, *::before, *::after { box-sizing: inherit; }
-
-body {
-  padding: 0; margin: 0;
-  font-family: 'Helvetica Neue', Helvetica, sans-serif;
-  background: #e2e2e2;
-  box-sizing: border-box;
-}
-.wrap {
-  box-shadow: 0 0 5px 0 rgba(0, 0, 50, .3);
-  max-width: 40rem;
-  margin: 0 auto;
-  border: 1px solid #aaa;
-  min-height: 100vh;
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-}
-
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 1rem;
-}
-header>* {
-  margin: 0;
-}
-header a,
-.main-nav a,
-.footer-nav a {
-  text-decoration: none;
-  color: inherit;
-}
-
-.nav {
-  display: flex;
-}
-.nav a {
-  display: block;
-  padding: 1rem 2rem;
-  background: lightblue;
-  color: inherit;
-  flex: 1 0 auto;
-  text-align: center;
-  margin-right: 1px;
-  transition: .3s;
-}
-.nav a:hover,
-.nav a.active {
-  background: lightgreen;
-}
-
-.content {
-  flex: 1 1 auto;
-  padding: 1rem;
-}
-
-.columns {
-  display: flex;
-}
-.columns .main {
-  flex-basis: 75%;
-  max-width: 75%;
-}
-.columns .sidebar {
-  flex-basis: 25%;
-  max-width: 25%;
-}
-
-img {
-  max-width: 100%;
-}
-
-a.article { display: block; }
-
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/site.css' %}">
+  {% block extra_css %}{% endblock %}
 </head>
 <body>
-<div class="wrap">
+{% menus as menus %}
+<div class="site-shell">
 
-  <header>
-    <h1><a href="/{{ request.LANGUAGE_CODE }}/">feincms3</a></h1>
-    <nav class="language-nav">
-      <a href="/en/">english</a>
-      <a href="/de/">deutsch</a>
-    </nav>
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="site-brand" href="/{{ request.LANGUAGE_CODE }}/">feincms3</a>
+
+      <button type="button" class="nav-toggle" aria-expanded="false" aria-controls="site-nav" data-nav-toggle>
+        <span class="nav-toggle__label">Menu</span>
+        <span class="nav-toggle__icon" aria-hidden="true"></span>
+      </button>
+
+      <div class="site-header__tools" id="site-nav" data-nav-panel>
+        <nav class="main-nav" aria-label="Main">
+          {% for p in menus.main %}
+          <a
+            {% if page and p.id in page.tree_path %}class="active"{% endif %}
+            href="{{ p.get_absolute_url }}">{{ p }}</a>
+          {% endfor %}
+        </nav>
+
+        <form class="site-search" action="{% url 'search' %}" method="get" role="search">
+          <label class="visually-hidden" for="site-search-q">Search</label>
+          <input
+            id="site-search-q"
+            type="search"
+            name="q"
+            value="{{ request.GET.q|default:'' }}"
+            placeholder="Search articles…"
+            autocomplete="off">
+          <button type="submit">Search</button>
+        </form>
+
+        <nav class="language-nav" aria-label="Language">
+          <a href="/en/" {% if request.LANGUAGE_CODE == "en" %}aria-current="true"{% endif %}>EN</a>
+          <a href="/de/" {% if request.LANGUAGE_CODE == "de" %}aria-current="true"{% endif %}>DE</a>
+        </nav>
+      </div>
+    </div>
   </header>
 
-  {% menus as menus %}
-  <nav class="nav main-nav">
-    {% for p in menus.main %}
-    <a {% if p.id in page.tree_path %}class="active"{% endif %}
-      href="{{ p.get_absolute_url }}">{{ p }}</a>
-    {% endfor %}
-  </nav>
-
-  <div class="content">
+  <main class="site-content">
     {% block content %}{% endblock %}
-  </div>
+  </main>
 
-  <nav class="nav footer-nav">
-    {% for p in menus.footer %}
-    <a {% if p.id in page.tree_path %}class="active"{% endif %}
-      href="{{ p.get_absolute_url }}">{{ p }}</a>
-    {% endfor %}
-  </nav>
+  <footer class="site-footer">
+    <div class="site-footer__inner">
+      <nav class="footer-nav" aria-label="Footer">
+        {% for p in menus.footer %}
+        <a
+          {% if page and p.id in page.tree_path %}class="active"{% endif %}
+          href="{{ p.get_absolute_url }}">{{ p }}</a>
+        {% endfor %}
+      </nav>
+      <p class="site-footer__credit">feincms3 example · editorial demo</p>
+    </div>
+  </footer>
 
 </div>
+<script src="{% static 'js/site.js' %}" defer></script>
+{% block extra_js %}{% endblock %}
 </body>
 </html>

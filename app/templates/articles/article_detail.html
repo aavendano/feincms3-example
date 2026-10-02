@@ -3,19 +3,24 @@
 {% block title %}{{ article.title }} - {{ block.super }}{% endblock %}
 
 {% block content %}
+<article class="article-detail">
+  {% for image in article.images.all %}
+    {% if forloop.first %}<div class="article-gallery">{% endif %}
+      <div class="slide">
+        <img src="{{ image.image.url }}" alt=""/>
+        {% if image.caption %}<p>{{ image.caption }}</p>{% endif %}
+      </div>
+    {% if forloop.last %}</div>{% endif %}
+  {% endfor %}
 
-{% for image in article.images.all %}
-  {% if forloop.first %}<div class="gallery">{% endif %}
-    <div class="slide">
-      <img src="{{ image.image.url }}" alt=""/>
-      {% if image.caption %}<p>{{ image.caption }}</p>{% endif %}
-    </div>
-  {% if forloop.last %}</div>{% endif %}
-{% endfor %}
+  <h1 class="article-detail__title">{{ article }}</h1>
+  <p class="article-detail__meta">
+    <time datetime="{{ article.publication_date|date:'Y-m-d' }}">{{ article.publication_date|date:"d.m.Y" }}</time>
+    · {{ article.get_category_display }}
+  </p>
 
-<h1>{{ article }}</h1>
-{{ article.publication_date|date:"d.m.Y" }}
-
-{{ article.body|safe }}
-
+  <div class="prose">
+    {{ article.body|safe }}
+  </div>
+</article>
 {% endblock %}

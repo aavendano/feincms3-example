@@ -3,12 +3,14 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from app.articles import views as article_views
 from app.content import editor
 from app.content.urls import api_patterns, public_patterns
 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("search/", article_views.search, name="search"),
 ]
 if not settings.CONTENT_EDITOR_IN_SPA:
     # Older django-admin-react without CUSTOM_PAGES: serve the editor module

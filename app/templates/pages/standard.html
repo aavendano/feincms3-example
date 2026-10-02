@@ -5,6 +5,10 @@
 {% block title %}{{ page }} - {{ block.super }}{% endblock %}
 
 {% block content %}
-<h1>{{ page }}</h1>
-{% render_region regions 'main' %}
+<article class="page-standard">
+  <h1 class="page-title">{{ page }}</h1>
+  <div class="prose">
+    {% render_region regions 'main' %}
+  </div>
+</article>
 {% endblock %}

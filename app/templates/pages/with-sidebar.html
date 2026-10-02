@@ -5,9 +5,11 @@
 {% block title %}{{ page }} - {{ block.super }}{% endblock %}
 
 {% block content %}
-<h1>{{ page }}</h1>
-<div class="columns">
-  <div class="main">{% render_region regions 'main' %}</div>
-  <div class="sidebar">{% render_region regions 'sidebar' %}</div>
-</div>
+<article class="page-with-sidebar">
+  <h1 class="page-title">{{ page }}</h1>
+  <div class="columns">
+    <div class="main prose">{% render_region regions 'main' %}</div>
+    <aside class="sidebar prose">{% render_region regions 'sidebar' %}</aside>
+  </div>
+</article>
 {% endblock %}

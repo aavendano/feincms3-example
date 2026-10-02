@@ -1,4 +1,5 @@
-from django.shortcuts import get_object_or_404
+from django.db.models import Q
+from django.shortcuts import get_object_or_404, render
 from feincms3.applications import page_for_app_request
 from feincms3.shortcuts import render_detail, render_list
 
@@ -35,4 +36,20 @@ def article_detail(request, year, slug):
             slug=slug,
         ),
         {"page": page},
+    )
+
+
+def search(request):
+    q = (request.GET.get("q") or "").strip()
+    results = []
+    if q:
+        results = list(
+            Article.objects.published()
+            .filter(Q(title__icontains=q) | Q(body__icontains=q))
+            .prefetch_related("images")
+        )
+    return render(
+        request,
+        "articles/search.html",
+        {"q": q, "results": results},
     )

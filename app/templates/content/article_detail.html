@@ -3,9 +3,15 @@
 {% block title %}{{ article.title }} - {{ block.super }}{% endblock %}
 
 {% block content %}
-<article lang="{{ article.locale }}" data-source="filesystem" data-article-id="{{ article.id }}">
-  <h1>{{ article.title }}</h1>
-  <p>{{ article.publication_date|date:"d.m.Y" }} · {{ article.category }} · {{ article.market }}/{{ article.locale }}</p>
-  {{ regions.main }}
+<article class="article-detail" lang="{{ article.locale }}" data-source="filesystem" data-article-id="{{ article.id }}">
+  <h1 class="article-detail__title">{{ article.title }}</h1>
+  <p class="article-detail__meta">
+    <time datetime="{{ article.publication_date|date:'Y-m-d' }}">{{ article.publication_date|date:"d.m.Y" }}</time>
+    · {{ article.category }}
+    · {{ article.market }}/{{ article.locale }}
+  </p>
+  <div class="prose">
+    {{ regions.main }}
+  </div>
 </article>
 {% endblock %}

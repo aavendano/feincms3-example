@@ -3,17 +3,24 @@
 {% block title %}{{ page }} - {{ block.super }}{% endblock %}
 
 {% block content %}
+<section class="article-listing">
+  <h1 class="page-title">{{ page }}</h1>
 
-  <h1>{{ page }}</h1>
-
-  {% for article in object_list %}
-    <a href="{{ article.get_absolute_url }}" class="article">
-      <h2>{{ article }}</h2>
-      {{ article.publication_date|date:"d.m.Y" }}
+  {% if object_list %}
+  <div class="article-list">
+    {% for article in object_list %}
+    <a href="{{ article.get_absolute_url }}" class="article-row">
+      <time class="article-row__date" datetime="{{ article.publication_date|date:'Y-m-d' }}">{{ article.publication_date|date:"d.m.Y" }}</time>
+      <h2 class="article-row__title">{{ article }}</h2>
+      <span class="article-row__meta">{{ article.get_category_display }}</span>
       {% if article.images.all|length %}
-        <img src="{{ article.images.all.0.image.url }}" alt="">
+        <img class="article-row__thumb" src="{{ article.images.all.0.image.url }}" alt="">
       {% endif %}
     </a>
-  {% endfor %}
-
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="empty-state">No published articles yet.</p>
+  {% endif %}
+</section>
 {% endblock %}
